@@ -164,7 +164,7 @@ export const App: React.FC = () => {
   const [scaleId, setScaleId] = useState<ScaleId>(LEVELS[0].scaleId);
   const [bpm, setBpm] = useState(LEVELS[0].bpm);
   const [followBall, setFollowBall] = useState(false);
-  const [simSpeed, setSimSpeed] = useState<0.65 | 0.8 | 1>(1);
+  const [simSpeed, setSimSpeed] = useState<0.55 | 0.7 | 0.85 | 1>(0.7);
   const [zoomPct, setZoomPct] = useState(100);
   const [, setUiTick] = useState(0);
 
@@ -735,8 +735,8 @@ export const App: React.FC = () => {
               target.prevY +
               (target.y - target.prevY) * alpha +
               Math.max(-14, Math.min(28, target.vy * 0.06));
-            const kx = Math.min(1, rawDt * 3.0);
-            const ky = Math.min(1, rawDt * 4.2);
+            const kx = Math.min(1, rawDt * 2.4);
+            const ky = Math.min(1, rawDt * 3.4);
             cam.focusX += (tx - cam.focusX) * kx;
             cam.focusY += (ty - cam.focusY) * ky;
           } else {
@@ -1449,7 +1449,9 @@ export const App: React.FC = () => {
           onClick={() => {
             synthEngine.unlock();
             synthEngine.playUiTick();
-            setSimSpeed((s) => (s === 0.8 ? 0.65 : s === 0.65 ? 1 : 0.8));
+            setSimSpeed((s) =>
+              s === 0.7 ? 0.55 : s === 0.55 ? 1 : s === 1 ? 0.85 : 0.7
+            );
           }}
           className="hw-btn"
           style={{
@@ -1459,7 +1461,7 @@ export const App: React.FC = () => {
             fontWeight: 600,
             color: simSpeed < 1 ? "#1E4B63" : "var(--ink)",
           }}
-          title={locale === "vi" ? "Tốc độ rơi bóng (0.65x / 0.8x / 1x)" : "Ball speed (0.65x / 0.8x / 1x)"}
+          title={locale === "vi" ? "Tốc độ (0.55x / 0.7x / 0.85x / 1.0x)" : "Speed (0.55x / 0.7x / 0.85x / 1.0x)"}
         >
           {simSpeed === 1 ? "1.0x" : `${simSpeed}x`}
         </button>

@@ -227,7 +227,7 @@ export class OrbitalRenderer3D {
   public updateCamera(cameraState: CameraState): void {
     const zoom = Math.max(0.28, Math.min(2.6, cameraState.zoom));
     const fovRad = (this.camera.fov * Math.PI) / 180;
-    const baseDist = (STAGE_H * 1.24) / (2 * Math.tan(fovRad * 0.5));
+    const baseDist = (STAGE_H * 1.32) / (2 * Math.tan(fovRad * 0.5));
     const dist = baseDist / zoom;
 
     const fx = cameraState.focusX;
