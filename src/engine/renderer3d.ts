@@ -11,6 +11,7 @@ import type {
   ResonanceRing,
   Ripple,
   SplitterPiece,
+  TubePiece,
   Vec2,
   WorldState,
 } from "./types.ts";
@@ -73,6 +74,14 @@ interface RingMeshEntry {
   group: THREE.Group;
   torus: THREE.Mesh;
   core: THREE.Mesh;
+}
+
+interface TubeMeshEntry {
+  group: THREE.Group;
+  pipe: THREE.Mesh;
+  collarA: THREE.Mesh;
+  collarB: THREE.Mesh;
+  sig: string;
 }
 
 interface MarbleMeshEntry {
@@ -182,6 +191,7 @@ export class OrbitalRenderer3D {
   private splitterMeshes = new Map<string, SplitterMeshEntry>();
   private emitterMeshes = new Map<string, EmitterMeshEntry>();
   private ringMeshes = new Map<string, RingMeshEntry>();
+  private tubeMeshes = new Map<string, TubeMeshEntry>();
   private marbleMeshes = new Map<number, MarbleMeshEntry>();
 
   private sharedMarbleGeo = new THREE.SphereGeometry(8, 32, 24);
@@ -846,6 +856,79 @@ export class OrbitalRenderer3D {
     }
   }
 
+  private syncTubes(tubes: TubePiece[], selectedId: string | null): void {
+    const alive = new Set<string>();
+    for (const tube of tubes) {
+      if (tube.points.length < 2) continue;
+      alive.add(tube.id);
+      const sig = `${tube.points.length}_${tube.points[0].x.toFixed(0)}_${tube.points[tube.points.length - 1].x.toFixed(0)}_${tube.points[tube.points.length - 1].y.toFixed(0)}`;
+      let entry = this.tubeMeshes.get(tube.id);
+      if (!entry || entry.sig !== sig) {
+        if (entry) {
+          this.scene.remove(entry.group);
+          entry.pipe.geometry.dispose();
+          (entry.pipe.material as THREE.Material).dispose();
+          entry.collarA.geometry.dispose();
+          entry.collarB.geometry.dispose();
+        }
+        const curvePts = tube.points.map((p) => new THREE.Vector3(p.x, -p.y, 2));
+        const curve = new THREE.CatmullRomCurve3(curvePts);
+        const geo = new THREE.TubeGeometry(curve, 24, 11.5, 14, false);
+        const mat = new THREE.MeshPhysicalMaterial({
+          color: 0xdff6ff,
+          roughness: 0.06,
+          metalness: 0.05,
+          clearcoat: 1.0,
+          clearcoatRoughness: 0.04,
+          transparent: true,
+          opacity: 0.34,
+          side: THREE.DoubleSide,
+          depthWrite: false,
+          emissive: new THREE.Color(0x6ad6ff),
+          emissiveIntensity: 0.08,
+        });
+        const pipe = new THREE.Mesh(geo, mat);
+
+        const cGeo = new THREE.TorusGeometry(12.2, 1.8, 10, 24);
+        const collarA = new THREE.Mesh(cGeo, this.brassMat);
+        const p0 = curvePts[0];
+        const p1 = curvePts[1];
+        const tanA = new THREE.Vector3().subVectors(p1, p0).normalize();
+        collarA.position.copy(p0);
+        collarA.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), tanA);
+
+        const collarB = new THREE.Mesh(cGeo, this.brassMat);
+        const pLast = curvePts[curvePts.length - 1];
+        const pPrev = curvePts[curvePts.length - 2];
+        const tanB = new THREE.Vector3().subVectors(pLast, pPrev).normalize();
+        collarB.position.copy(pLast);
+        collarB.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), tanB);
+
+        const group = new THREE.Group();
+        group.add(pipe, collarA, collarB);
+        this.scene.add(group);
+        entry = { group, pipe, collarA, collarB, sig };
+        this.tubeMeshes.set(tube.id, entry);
+      }
+
+      const pulse = tube.pulse ?? 0;
+      const isSel = selectedId === tube.id;
+      const pMat = entry.pipe.material as THREE.MeshPhysicalMaterial;
+      pMat.opacity = 0.32 + pulse * 0.28;
+      pMat.emissiveIntensity = isSel ? 0.5 : 0.08 + pulse * 0.65;
+    }
+
+    for (const [id, entry] of this.tubeMeshes.entries()) {
+      if (!alive.has(id)) {
+        this.scene.remove(entry.group);
+        entry.pipe.geometry.dispose();
+        (entry.pipe.material as THREE.Material).dispose();
+        entry.collarA.geometry.dispose();
+        this.tubeMeshes.delete(id);
+      }
+    }
+  }
+
   private syncMarbles(marbles: Marble[], alpha: number, dt: number): void {
     const alive = new Set<number>();
     for (const m of marbles) {
@@ -1114,6 +1197,7 @@ export class OrbitalRenderer3D {
     this.syncSplitters(world.splitters, dt);
     this.syncEmitters(world.emitters, dt);
     this.syncRings(world.rings);
+    this.syncTubes(world.tubes ?? [], selectedId);
     this.syncMarbles(world.marbles, alpha, dt);
     this.updateFx(world, dt);
     this.renderer.render(this.scene, this.camera);
@@ -1198,8 +1282,28 @@ export class OrbitalRenderer3D {
       }
     }
 
-    // 3. Draft bar preview
-    if (opts.draftBar) {
+    // 3. Draft bar or curved glass tube preview
+    if (opts.draftTube && opts.draftTube.length >= 2) {
+      ctx.save();
+      ctx.strokeStyle = "rgba(86, 198, 232, 0.55)";
+      ctx.lineWidth = 14;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      ctx.beginPath();
+      let started = false;
+      for (const pt of opts.draftTube) {
+        const sp = this.projectToScreen(pt.x, pt.y, 4, viewW, viewH);
+        if (!sp.visible) continue;
+        if (!started) {
+          ctx.moveTo(sp.x, sp.y);
+          started = true;
+        } else {
+          ctx.lineTo(sp.x, sp.y);
+        }
+      }
+      ctx.stroke();
+      ctx.restore();
+    } else if (opts.draftBar) {
       const db = opts.draftBar;
       const pa = this.projectToScreen(db.ax, db.ay, 6, viewW, viewH);
       const pb = this.projectToScreen(db.bx, db.by, 6, viewW, viewH);
@@ -1259,6 +1363,11 @@ export class OrbitalRenderer3D {
     this.silentMaterial.dispose();
     this.pinMaterial.dispose();
     Object.values(this.barMaterials).forEach((m) => m.dispose());
+    for (const entry of this.tubeMeshes.values()) {
+      entry.pipe.geometry.dispose();
+      (entry.pipe.material as THREE.Material).dispose();
+      entry.collarA.geometry.dispose();
+    }
     for (const r of this.impactRings) r.mat.dispose();
     this.sparkPoints.geometry.dispose();
     (this.sparkPoints.material as THREE.Material).dispose();

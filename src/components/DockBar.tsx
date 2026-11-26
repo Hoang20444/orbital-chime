@@ -26,7 +26,7 @@ interface DockBarProps {
 }
 
 const INSTRUMENT_TOOLS: MaterialType[] = ["marimba", "brass", "ceramic", "bass"];
-const PHYSICS_TOOLS: ToolType[] = ["bumper", "splitter", "emitter"];
+const PHYSICS_TOOLS: ToolType[] = ["bumper", "splitter", "tube", "emitter"];
 
 const MaterialSwatch: React.FC<{ material: MaterialType }> = ({ material }) => {
   const spec = MATERIALS[material];
@@ -71,6 +71,20 @@ const PhysicsGlyph: React.FC<{ tool: ToolType }> = ({ tool }) => {
           transform: "rotate(45deg)",
           backgroundColor: TOKENS.splitterFill,
           border: `1.5px solid ${TOKENS.ink}`,
+        }}
+      />
+    );
+  }
+  if (tool === "tube") {
+    return (
+      <span
+        style={{
+          display: "inline-block",
+          width: 14,
+          height: 8,
+          borderRadius: 999,
+          backgroundColor: "rgba(130, 220, 248, 0.55)",
+          border: "1.5px solid #4A8DA6",
         }}
       />
     );

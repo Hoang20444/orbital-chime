@@ -5,7 +5,15 @@ import type {
   SongPhraseChain,
 } from "../data/marbleSongs.ts";
 import { FIXED_DT, MARBLE_RADIUS, MAX_SPEED } from "../engine/physics.ts";
-import type { BarPiece, Emitter, WorldState } from "../engine/types.ts";
+import type {
+  BarPiece,
+  BumperPiece,
+  Emitter,
+  SplitterPiece,
+  TubePiece,
+  Vec2,
+  WorldState,
+} from "../engine/types.ts";
 import { MATERIALS } from "../theme/tokens.ts";
 
 const SUB_STEPS = 2;
@@ -227,6 +235,9 @@ export function sculptMarbleSong(
 
   const emitters: Emitter[] = [];
   const bars: BarPiece[] = [];
+  const bumpers: BumperPiece[] = [];
+  const splitters: SplitterPiece[] = [];
+  const tubes: TubePiece[] = [];
   const yPerBeat = Math.max(30, song.chains[0]?.dropPerHit ?? 36);
   const masterTopY = song.chains[0]?.startY ?? 132;
 
@@ -266,6 +277,7 @@ export function sculptMarbleSong(
 
     let musicIdx = 0;
     let relayIdx = 0;
+    let prevUsedTube = false;
 
     for (let i = 0; i < waypoints.length; i++) {
       const note = waypoints[i];
@@ -366,36 +378,127 @@ export function sculptMarbleSong(
           ? undefined
           : timbreOverride ?? note.instrument ?? chain.defaultInstrument;
 
-      const barId = note.silent
-        ? `song_${song.id}_${chain.id}_relay_${relayIdx++}`
-        : `song_${song.id}_${chain.id}_${musicIdx++}`;
+      if (i === waypoints.length - 1 && !note.silent) {
+        // Keep the musical bar for the final note, plus place a celebratory elastic Bumper on its exit arc
+        bars.push({
+          id: `song_${song.id}_${chain.id}_${musicIdx++}`,
+          ax: cx - solved.tx * halfLen,
+          ay: cy - solved.ty * halfLen,
+          bx: cx + solved.tx * halfLen,
+          by: cy + solved.ty * halfLen,
+          material: note.material,
+          locked: false,
+          fixedMidi: note.midi,
+          instrumentOverride: resolvedInst,
+          drumOverride: note.drum,
+          customRestitution: solved.restitution,
+          noteLabel: note.label,
+          trackChannel: chain.trackChannel,
+        });
+        const endArc = stepSubsteps(
+          { x: solved.pushedX, y: solved.pushedY, vx: solved.postVx, vy: solved.postVy },
+          substeps
+        );
+        const dirSign = solved.postVx < -10 ? -1 : 1;
+        bumpers.push({
+          id: `song_${song.id}_${chain.id}_endbmp`,
+          x: endArc.x - dirSign * 11,
+          y: endArc.y + 52,
+          radius: 17,
+          locked: false,
+          trackChannel: chain.trackChannel,
+        });
+      } else {
+        const barId = note.silent
+          ? `song_${song.id}_${chain.id}_relay_${relayIdx++}`
+          : `song_${song.id}_${chain.id}_${musicIdx++}`;
+        bars.push({
+          id: barId,
+          ax: cx - solved.tx * halfLen,
+          ay: cy - solved.ty * halfLen,
+          bx: cx + solved.tx * halfLen,
+          by: cy + solved.ty * halfLen,
+          material: note.material,
+          locked: false,
+          fixedMidi: note.silent ? undefined : note.midi,
+          instrumentOverride: resolvedInst,
+          drumOverride: note.silent ? undefined : note.drum,
+          customRestitution: solved.restitution,
+          noteLabel: note.silent ? undefined : note.label,
+          trackChannel: chain.trackChannel,
+          silent: note.silent ? true : undefined,
+        });
+      }
 
-      bars.push({
-        id: barId,
-        ax: cx - solved.tx * halfLen,
-        ay: cy - solved.ty * halfLen,
-        bx: cx + solved.tx * halfLen,
-        by: cy + solved.ty * halfLen,
-        material: note.material,
-        locked: false,
-        fixedMidi: note.silent ? undefined : note.midi,
-        instrumentOverride: resolvedInst,
-        drumOverride: note.silent ? undefined : note.drum,
-        customRestitution: solved.restitution,
-        noteLabel: note.silent ? undefined : note.label,
-        trackChannel: chain.trackChannel,
-        silent: note.silent ? true : undefined,
-      });
+      const afterBounce: SimState = {
+        x: solved.pushedX,
+        y: solved.pushedY,
+        vx: solved.postVx,
+        vy: solved.postVy,
+      };
 
-      curState = stepSubsteps(
-        {
-          x: solved.pushedX,
-          y: solved.pushedY,
-          vx: solved.postVx,
-          vy: solved.postVy,
-        },
-        substeps
-      );
+      // Transparent curved glass tube guiding marbles smoothly into the next bar
+      const prevTurn =
+        i > 0 &&
+        i < waypoints.length - 1 &&
+        (xs[i + 1] - xs[i]) * (xs[i] - xs[i - 1]) < 0;
+      const useTube =
+        !prevUsedTube &&
+        !prevTurn &&
+        i < waypoints.length - 1 &&
+        dtTicks >= 36 &&
+        (note.silent || (i + cIdx) % 3 === 1);
+      if (useTube) {
+        const entrySub = Math.round(substeps * 0.18);
+        const exitSub = Math.round(substeps * 0.82);
+        const entrySt = stepSubsteps(afterBounce, entrySub);
+        const exitSt = stepSubsteps(afterBounce, exitSub);
+        const span = Math.hypot(exitSt.x - entrySt.x, exitSt.y - entrySt.y);
+        if (span >= 40 && exitSub > entrySub + 8) {
+          const midX = (entrySt.x + exitSt.x) * 0.5;
+          const midY = (entrySt.y + exitSt.y) * 0.5 - 22;
+          const pts: Vec2[] = [];
+          const segs = 16;
+          for (let k = 0; k <= segs; k++) {
+            const u = k / segs;
+            const iu = 1 - u;
+            pts.push({
+              x: iu * iu * entrySt.x + 2 * iu * u * midX + u * u * exitSt.x,
+              y: iu * iu * entrySt.y + 2 * iu * u * midY + u * u * exitSt.y,
+            });
+          }
+          tubes.push({
+            id: `song_${song.id}_${chain.id}_tube_${i}`,
+            points: pts,
+            radius: 14,
+            trackChannel: chain.trackChannel,
+            travelDuration: (exitSub - entrySub) * SUB_DT,
+            exitVx: exitSt.vx,
+            exitVy: exitSt.vy,
+            locked: false,
+          });
+          prevUsedTube = true;
+        } else {
+          prevUsedTube = false;
+        }
+      } else {
+        prevUsedTube = false;
+        if (i < waypoints.length - 1 && !note.silent && dtTicks >= 26 && (i + cIdx) % 4 === 2) {
+          // Harmonic crystal prism along scenic mid-air arc
+          const midSt = stepSubsteps(afterBounce, Math.round(substeps * 0.5));
+          splitters.push({
+            id: `song_${song.id}_${chain.id}_prism_${i}`,
+            x: midSt.x,
+            y: midSt.y,
+            radius: 13,
+            locked: false,
+            trackChannel: chain.trackChannel,
+            harmonicPass: true,
+          });
+        }
+      }
+
+      curState = stepSubsteps(afterBounce, substeps);
       curTick += dtTicks;
     }
   }
@@ -405,8 +508,9 @@ export function sculptMarbleSong(
     gravity: SONG_GRAVITY,
     scaleId: song.scaleId,
     bars,
-    bumpers: [],
-    splitters: [],
+    bumpers,
+    splitters,
+    tubes,
     emitters,
     rings: [],
     marbles: [],

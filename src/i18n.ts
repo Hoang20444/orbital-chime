@@ -35,6 +35,7 @@ export type Strings = {
     bass: string;
     bumper: string;
     splitter: string;
+    tube: string;
     emitter: string;
   };
   tooltips: {
@@ -45,6 +46,7 @@ export type Strings = {
     bass: string;
     bumper: string;
     splitter: string;
+    tube: string;
     emitter: string;
     undo: string;
     redo: string;
@@ -100,6 +102,7 @@ export const I18N: Record<Locale, Strings> = {
       bass: "Bass",
       bumper: "Bumper",
       splitter: "Prism",
+      tube: "Tube",
       emitter: "Emitter",
     },
     tooltips: {
@@ -110,6 +113,7 @@ export const I18N: Record<Locale, Strings> = {
       bass: "Slate metal slab · Deep bass [4]",
       bumper: "Elastic bumper · Lifts marbles upward",
       splitter: "Prism splitter · Divides 1 marble into 2",
+      tube: "Glass tube · Drag to draw a curved marble guide",
       emitter: "Beat emitter · Drops marbles on rhythm",
       undo: "Undo last change [Ctrl+Z]",
       redo: "Redo undone change [Ctrl+Y]",
@@ -163,6 +167,7 @@ export const I18N: Record<Locale, Strings> = {
       bass: "Trầm",
       bumper: "Đệm nảy",
       splitter: "Chia tia",
+      tube: "Ống dẫn",
       emitter: "Nguồn bi",
     },
     tooltips: {
@@ -173,6 +178,7 @@ export const I18N: Record<Locale, Strings> = {
       bass: "Thanh kim loại trầm · Giữ nhịp nền [4]",
       bumper: "Đệm đàn hồi · Bật bi vọt lên cao",
       splitter: "Lăng kính · Tách 1 bi thành 2 nhánh",
+      tube: "Ống thủy tinh cong · Kéo để dẫn bóng chảy xuống thanh tiếp theo",
       emitter: "Nguồn thả bi theo nhịp BPM",
       undo: "Hoàn tác bước vừa làm [Ctrl+Z]",
       redo: "Khôi phục bước vừa hoàn tác [Ctrl+Y]",

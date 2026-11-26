@@ -91,6 +91,7 @@ export interface RenderOptions {
   ghostBranches: GhostBranch[];
   hintOverlay: LevelSolutionHint | null;
   draftBar: Pick<BarPiece, "ax" | "ay" | "bx" | "by" | "material"> | null;
+  draftTube?: Vec2[] | null;
   interpAlpha: number;
   followedMarbleId?: number | null;
 }
@@ -332,6 +333,59 @@ export function renderWorld(
       opts.selectedId === bmp.id,
       opts.hoveredId === bmp.id
     );
+  }
+
+  // 8b. Transparent Curved Glass Tubes
+  for (const tube of world.tubes ?? []) {
+    if (tube.points.length < 2) continue;
+    const isSel = opts.selectedId === tube.id;
+    const pulse = tube.pulse ?? 0;
+    ctx.save();
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+
+    // Soft cast shadow underneath tube
+    ctx.strokeStyle = "rgba(28, 35, 33, 0.08)";
+    ctx.lineWidth = 22;
+    ctx.beginPath();
+    tube.points.forEach((p, idx) =>
+      idx === 0 ? ctx.moveTo(p.x + 2, p.y + 4) : ctx.lineTo(p.x + 2, p.y + 4)
+    );
+    ctx.stroke();
+
+    // Translucent cyan-glass body
+    ctx.strokeStyle = isSel
+      ? "rgba(104, 212, 245, 0.45)"
+      : `rgba(176, 232, 248, ${(0.34 + pulse * 0.25).toFixed(3)})`;
+    ctx.lineWidth = 20;
+    ctx.beginPath();
+    tube.points.forEach((p, idx) =>
+      idx === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)
+    );
+    ctx.stroke();
+
+    // Specular inner highlight line
+    ctx.strokeStyle = `rgba(255, 255, 255, ${(0.52 + pulse * 0.35).toFixed(3)})`;
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    tube.points.forEach((p, idx) =>
+      idx === 0 ? ctx.moveTo(p.x - 1, p.y - 3) : ctx.lineTo(p.x - 1, p.y - 3)
+    );
+    ctx.stroke();
+
+    // Brass collar rings at entry & exit
+    const pStart = tube.points[0];
+    const pEnd = tube.points[tube.points.length - 1];
+    [pStart, pEnd].forEach((ep) => {
+      ctx.fillStyle = "#E8D298";
+      ctx.strokeStyle = isSel ? TOKENS.ink : "#9A7724";
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.arc(ep.x, ep.y, 11, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    });
+    ctx.restore();
   }
 
   // 9. Physical Acoustic Bars

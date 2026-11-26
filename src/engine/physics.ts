@@ -43,6 +43,42 @@ export function closestPointOnSegment(
   return { cx: ax + abx * t, cy: ay + aby * t, t };
 }
 
+function samplePolyline(
+  pts: Vec2[],
+  t01: number
+): { x: number; y: number; tx: number; ty: number; totalLen: number } {
+  let totalLen = 0;
+  const segLens: number[] = [];
+  for (let i = 0; i < pts.length - 1; i++) {
+    const l = Math.hypot(pts[i + 1].x - pts[i].x, pts[i + 1].y - pts[i].y);
+    segLens.push(l);
+    totalLen += l;
+  }
+  if (totalLen < 1e-4) {
+    return { x: pts[0].x, y: pts[0].y, tx: 1, ty: 0, totalLen: 0 };
+  }
+  const target = Math.max(0, Math.min(1, t01)) * totalLen;
+  let acc = 0;
+  for (let i = 0; i < segLens.length; i++) {
+    const l = segLens[i];
+    if (acc + l >= target || i === segLens.length - 1) {
+      const localT = l > 1e-4 ? Math.max(0, Math.min(1, (target - acc) / l)) : 0;
+      const p0 = pts[i];
+      const p1 = pts[i + 1];
+      return {
+        x: p0.x + (p1.x - p0.x) * localT,
+        y: p0.y + (p1.y - p0.y) * localT,
+        tx: l > 1e-4 ? (p1.x - p0.x) / l : 1,
+        ty: l > 1e-4 ? (p1.y - p0.y) / l : 0,
+        totalLen,
+      };
+    }
+    acc += l;
+  }
+  const last = pts[pts.length - 1];
+  return { x: last.x, y: last.y, tx: 1, ty: 0, totalLen };
+}
+
 function clampSpeed(m: Marble): void {
   const sp = Math.hypot(m.vx, m.vy);
   if (sp > MAX_SPEED) {
@@ -78,6 +114,11 @@ export function stepFixed(world: WorldState, isPlaying: boolean): PhysicsEvent[]
   }
   for (const s of world.splitters) {
     if (s.pulse && s.pulse > 0) s.pulse = Math.max(0, s.pulse - FIXED_DT * 4.0);
+  }
+  if (world.tubes) {
+    for (const t of world.tubes) {
+      if (t.pulse && t.pulse > 0) t.pulse = Math.max(0, t.pulse - FIXED_DT * 3.5);
+    }
   }
   for (const e of world.emitters) {
     if (e.pulse && e.pulse > 0) e.pulse = Math.max(0, e.pulse - FIXED_DT * 4.5);
@@ -160,10 +201,85 @@ export function stepFixed(world: WorldState, isPlaying: boolean): PhysicsEvent[]
   for (let step = 0; step < SUB_STEPS; step++) {
     for (let mi = world.marbles.length - 1; mi >= 0; mi--) {
       const m = world.marbles[mi];
+
+      // 0. Guided transparent curved tube traversal
+      if (m.activeTube) {
+        const tube = world.tubes?.find((t) => t.id === m.activeTube!.tubeId);
+        if (!tube || tube.points.length < 2) {
+          m.activeTube = undefined;
+        } else {
+          m.activeTube.progress += subDt / Math.max(0.05, m.activeTube.duration);
+          const sample = samplePolyline(tube.points, m.activeTube.progress);
+          m.x = sample.x;
+          m.y = sample.y;
+          const sp = sample.totalLen / Math.max(0.05, m.activeTube.duration);
+          m.vx = sample.tx * sp;
+          m.vy = sample.ty * sp;
+          m.squash = 0;
+          if (m.activeTube.progress >= 1 - 1e-4) {
+            const lastPt = tube.points[tube.points.length - 1];
+            m.x = lastPt.x;
+            m.y = lastPt.y;
+            m.vx = m.activeTube.exitVx;
+            m.vy = m.activeTube.exitVy;
+            m.cooldowns[tube.id] = 0.45;
+            m.activeTube = undefined;
+          }
+          continue;
+        }
+      }
+
       m.vy += g * subDt;
       clampSpeed(m);
       m.x += m.vx * subDt;
       m.y += m.vy * subDt;
+
+      // 0b. Tube entry check
+      if (world.tubes && world.tubes.length > 0) {
+        let enteredTube = false;
+        for (const tube of world.tubes) {
+          if (tube.points.length < 2 || m.cooldowns[tube.id]) continue;
+          if (m.trackChannel && tube.trackChannel && m.trackChannel !== tube.trackChannel) {
+            continue;
+          }
+          const entry = tube.points[0];
+          const nextPt = tube.points[1];
+          const edx = nextPt.x - entry.x;
+          const edy = nextPt.y - entry.y;
+          const elen = Math.hypot(edx, edy) || 1;
+          const dotAlong = ((m.x - entry.x) * edx + (m.y - entry.y) * edy) / elen;
+          const velDot = (m.vx * edx + m.vy * edy) / elen;
+          const trigR = (tube.radius ?? 14) + m.radius * 0.25;
+          if (
+            velDot > 20 &&
+            dotAlong >= -0.5 &&
+            distSq(m.x, m.y, entry.x, entry.y) <= trigR * trigR
+          ) {
+            const info = samplePolyline(tube.points, 1);
+            const inSpeed = Math.max(200, Math.hypot(m.vx, m.vy));
+            const duration =
+              tube.travelDuration ?? Math.max(0.24, info.totalLen / inSpeed);
+            const pN1 = tube.points[tube.points.length - 2];
+            const pN = tube.points[tube.points.length - 1];
+            const segL = Math.hypot(pN.x - pN1.x, pN.y - pN1.y) || 1;
+            const exitVx = tube.exitVx ?? ((pN.x - pN1.x) / segL) * inSpeed;
+            const exitVy = tube.exitVy ?? ((pN.y - pN1.y) / segL) * inSpeed;
+            m.activeTube = {
+              tubeId: tube.id,
+              progress: 0,
+              duration,
+              exitVx,
+              exitVy,
+            };
+            m.x = entry.x;
+            m.y = entry.y;
+            tube.pulse = 1;
+            enteredTube = true;
+            break;
+          }
+        }
+        if (enteredTube) continue;
+      }
 
       // 1. Circle-vs-Capsule collisions against musical bars
       for (const bar of world.bars) {
@@ -247,6 +363,9 @@ export function stepFixed(world: WorldState, isPlaying: boolean): PhysicsEvent[]
       // 2. Circle-vs-Circle collisions against Bumpers
       for (const bumper of world.bumpers) {
         if (m.cueTargetId && m.cueTargetId !== bumper.id) continue;
+        if (m.trackChannel && bumper.trackChannel && m.trackChannel !== bumper.trackChannel) {
+          continue;
+        }
         const minDist = m.radius + bumper.radius;
         const dx = m.x - bumper.x;
         const dy = m.y - bumper.y;
@@ -261,13 +380,18 @@ export function stepFixed(world: WorldState, isPlaying: boolean): PhysicsEvent[]
           const vn = m.vx * nx + m.vy * ny;
           if (vn < 0) {
             const impactSpeed = -vn;
-            m.vx -= 2.12 * vn * nx;
-            m.vy -= 2.12 * vn * ny;
-            const sp = Math.hypot(m.vx, m.vy);
-            if (sp < 420) {
-              const boost = 420 / (sp || 1);
-              m.vx *= boost;
-              m.vy *= boost;
+            if (bumper.customRestitution !== undefined) {
+              m.vx -= (1 + bumper.customRestitution) * vn * nx;
+              m.vy -= (1 + bumper.customRestitution) * vn * ny;
+            } else {
+              m.vx -= 2.12 * vn * nx;
+              m.vy -= 2.12 * vn * ny;
+              const sp = Math.hypot(m.vx, m.vy);
+              if (sp < 420) {
+                const boost = 420 / (sp || 1);
+                m.vx *= boost;
+                m.vy *= boost;
+              }
             }
             clampSpeed(m);
 
@@ -287,49 +411,53 @@ export function stepFixed(world: WorldState, isPlaying: boolean): PhysicsEvent[]
                 x: bumper.x,
                 y: bumper.y,
                 speed: impactSpeed,
-                silentCue: wasSilentCue,
+                silentCue: wasSilentCue || bumper.customRestitution !== undefined,
               });
             }
           }
         }
       }
 
-      // 3. Prism Splitter sensor (splits 1 marble into ±26° symmetric twin streams)
+      // 3. Prism Splitter sensor (splits 1 marble into ±26° symmetric twin streams or shimmers on harmonicPass)
       for (const splitter of world.splitters) {
         if (m.splitHistory[splitter.id]) continue;
+        if (m.trackChannel && splitter.trackChannel && m.trackChannel !== splitter.trackChannel) {
+          continue;
+        }
         const triggerR = splitter.radius + m.radius * 0.5;
         if (distSq(m.x, m.y, splitter.x, splitter.y) <= triggerR * triggerR) {
           splitter.pulse = 1;
-          const baseSpeed = Math.max(240, Math.hypot(m.vx, m.vy) * 0.96);
-          const angle = Math.atan2(m.vy, m.vx);
-          const spread = (26 * Math.PI) / 180;
-
-          // Update original marble to left branch and spawn right branch
           m.splitHistory[splitter.id] = true;
-          const childHistory = { ...m.splitHistory };
 
-          m.x = splitter.x;
-          m.y = splitter.y;
-          m.vx = Math.cos(angle - spread) * baseSpeed;
-          m.vy = Math.sin(angle - spread) * baseSpeed;
+          if (!splitter.harmonicPass) {
+            const baseSpeed = Math.max(240, Math.hypot(m.vx, m.vy) * 0.96);
+            const angle = Math.atan2(m.vy, m.vx);
+            const spread = (26 * Math.PI) / 180;
+            const childHistory = { ...m.splitHistory };
 
-          if (world.marbles.length + spawnedFromSplit.length < MAX_MARBLES) {
-            spawnedFromSplit.push({
-              id: world.nextMarbleId++,
-              x: splitter.x,
-              y: splitter.y,
-              prevX: splitter.x,
-              prevY: splitter.y,
-              vx: Math.cos(angle + spread) * baseSpeed,
-              vy: Math.sin(angle + spread) * baseSpeed,
-              radius: m.radius,
-              age: m.age,
-              trail: [],
-              cooldowns: { ...m.cooldowns },
-              splitHistory: childHistory,
-              squash: 0.4,
-              squashAngle: angle + spread,
-            });
+            m.x = splitter.x;
+            m.y = splitter.y;
+            m.vx = Math.cos(angle - spread) * baseSpeed;
+            m.vy = Math.sin(angle - spread) * baseSpeed;
+
+            if (world.marbles.length + spawnedFromSplit.length < MAX_MARBLES) {
+              spawnedFromSplit.push({
+                id: world.nextMarbleId++,
+                x: splitter.x,
+                y: splitter.y,
+                prevX: splitter.x,
+                prevY: splitter.y,
+                vx: Math.cos(angle + spread) * baseSpeed,
+                vy: Math.sin(angle + spread) * baseSpeed,
+                radius: m.radius,
+                age: m.age,
+                trail: [],
+                cooldowns: { ...m.cooldowns },
+                splitHistory: childHistory,
+                squash: 0.4,
+                squashAngle: angle + spread,
+              });
+            }
           }
 
           events.push({

@@ -12,7 +12,7 @@ export type ScaleId =
   | "a_minor9"
   | "g_dorian";
 
-export type ToolType = MaterialType | "bumper" | "splitter" | "emitter";
+export type ToolType = MaterialType | "bumper" | "splitter" | "tube" | "emitter";
 
 export interface MaterialSpec {
   id: MaterialType;
@@ -59,6 +59,8 @@ export interface BumperPiece {
   y: number;
   radius: number;
   locked?: boolean;
+  trackChannel?: string;
+  customRestitution?: number;
   pulse?: number;
 }
 
@@ -67,6 +69,20 @@ export interface SplitterPiece {
   x: number;
   y: number;
   radius: number;
+  locked?: boolean;
+  trackChannel?: string;
+  harmonicPass?: boolean;
+  pulse?: number;
+}
+
+export interface TubePiece {
+  id: string;
+  points: Vec2[];
+  radius?: number;
+  trackChannel?: string;
+  travelDuration?: number;
+  exitVx?: number;
+  exitVy?: number;
   locked?: boolean;
   pulse?: number;
 }
@@ -112,6 +128,13 @@ export interface Marble {
   cueTargetId?: string;
   silentCue?: boolean;
   trackChannel?: string;
+  activeTube?: {
+    tubeId: string;
+    progress: number;
+    duration: number;
+    exitVx: number;
+    exitVy: number;
+  };
 }
 
 export interface Ripple {
@@ -137,6 +160,7 @@ export interface WorldState {
   bars: BarPiece[];
   bumpers: BumperPiece[];
   splitters: SplitterPiece[];
+  tubes?: TubePiece[];
   emitters: Emitter[];
   rings: ResonanceRing[];
   marbles: Marble[];
