@@ -26,7 +26,7 @@ interface DockBarProps {
 }
 
 const INSTRUMENT_TOOLS: MaterialType[] = ["marimba", "brass", "ceramic", "bass"];
-const PHYSICS_TOOLS: ToolType[] = ["bumper", "splitter", "tube", "emitter"];
+const PHYSICS_TOOLS: ToolType[] = ["bumper", "splitter", "rail", "emitter"];
 
 const MaterialSwatch: React.FC<{ material: MaterialType }> = ({ material }) => {
   const spec = MATERIALS[material];
@@ -75,18 +75,31 @@ const PhysicsGlyph: React.FC<{ tool: ToolType }> = ({ tool }) => {
       />
     );
   }
-  if (tool === "tube") {
+  if (tool === "rail") {
     return (
-      <span
-        style={{
-          display: "inline-block",
-          width: 14,
-          height: 8,
-          borderRadius: 999,
-          backgroundColor: "rgba(130, 220, 248, 0.55)",
-          border: "1.5px solid #4A8DA6",
-        }}
-      />
+      <svg
+        width="14"
+        height="12"
+        viewBox="0 0 14 12"
+        style={{ display: "inline-block", verticalAlign: "middle" }}
+      >
+        <path
+          d="M1.5 2 L7 9.5 L12.5 2"
+          fill="none"
+          stroke="#242C36"
+          strokeWidth="3.2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <path
+          d="M1.5 2 L7 9.5 L12.5 2"
+          fill="none"
+          stroke="#38E2FF"
+          strokeWidth="1.2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
     );
   }
   return (

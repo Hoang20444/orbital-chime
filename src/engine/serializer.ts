@@ -3,9 +3,10 @@ import type {
   BarPiece,
   BumperPiece,
   Emitter,
+  RailVariant,
   ScaleId,
   SplitterPiece,
-  TubePiece,
+  TransferRailPiece,
   WorldState,
 } from "./types.ts";
 
@@ -13,7 +14,7 @@ export interface EditableSnapshot {
   bars: BarPiece[];
   bumpers: BumperPiece[];
   splitters: SplitterPiece[];
-  tubes: TubePiece[];
+  rails: TransferRailPiece[];
   emitters: Emitter[];
 }
 
@@ -49,15 +50,20 @@ export function cloneEditableSnapshot(world: WorldState): EditableSnapshot {
       radius: s.radius,
       locked: s.locked,
     })),
-    tubes: (world.tubes ?? []).map((t) => ({
-      id: t.id,
-      points: t.points.map((p) => ({ ...p })),
-      radius: t.radius,
-      trackChannel: t.trackChannel,
-      travelDuration: t.travelDuration,
-      exitVx: t.exitVx,
-      exitVy: t.exitVy,
-      locked: t.locked,
+    rails: (world.rails ?? []).map((r) => ({
+      id: r.id,
+      variant: r.variant,
+      x: r.x,
+      y: r.y,
+      rotation: r.rotation,
+      armLength: r.armLength,
+      openingAngle: r.openingAngle,
+      curvature: r.curvature,
+      slopeBias: r.slopeBias,
+      channelWidth: r.channelWidth,
+      boost: r.boost,
+      flipped: r.flipped,
+      locked: r.locked,
     })),
     emitters: world.emitters.map((e) => ({
       id: e.id,
@@ -81,10 +87,7 @@ export function applyEditableSnapshot(
   world.bars = snap.bars.map((b) => ({ ...b }));
   world.bumpers = snap.bumpers.map((b) => ({ ...b }));
   world.splitters = snap.splitters.map((s) => ({ ...s }));
-  world.tubes = (snap.tubes ?? []).map((t) => ({
-    ...t,
-    points: t.points.map((p) => ({ ...p })),
-  }));
+  world.rails = (snap.rails ?? []).map((r) => ({ ...r }));
   world.emitters = snap.emitters.map((e) => ({ ...e }));
 }
 
@@ -106,23 +109,27 @@ type SerializedEmitterTuple =
   | [number, number, number, number, number, number]
   | [number, number, number, number, number, number, string];
 
-type SerializedTubeTuple = [
-  Array<[number, number]>,
-  number?,
-  string?,
-  number?,
-  number?,
-  number?,
+type SerializedRailTuple = [
+  string, // variant
+  number, // x
+  number, // y
+  number, // rotation
+  number, // armLength
+  number, // openingAngle
+  number, // curvature
+  number, // slopeBias
+  number, // channelWidth
+  number, // boost
+  number? // flipped (1 | 0)
 ];
 
 interface SharePayload {
   bpm: number;
-  g?: number;
   scaleId: ScaleId;
   bars: SerializedBarTuple[];
-  bumpers: Array<[number, number] | [number, number, number, string?]>;
-  splitters: Array<[number, number] | [number, number, 0 | 1, string?, number?]>;
-  tubes?: SerializedTubeTuple[];
+  bumpers: Array<[number, number]>;
+  splitters: Array<[number, number]>;
+  rails?: SerializedRailTuple[];
   emitters: SerializedEmitterTuple[];
 }
 
@@ -133,7 +140,6 @@ function round2(n: number): number {
 export function encodeSandboxShareHash(world: WorldState): string {
   const payload: SharePayload = {
     bpm: world.bpm,
-    ...(world.gravity !== undefined ? { g: world.gravity } : {}),
     scaleId: world.scaleId,
     bars: world.bars.map((b) => {
       const meta: BarShareMeta = {};
@@ -184,28 +190,21 @@ export function encodeSandboxShareHash(world: WorldState): string {
         b.material,
       ];
     }),
-    bumpers: world.bumpers.map((b) =>
-      b.trackChannel || b.radius !== 22
-        ? [round2(b.x), round2(b.y), b.radius, b.trackChannel]
-        : [round2(b.x), round2(b.y)]
-    ),
-    splitters: world.splitters.map((s) =>
-      s.harmonicPass || s.trackChannel || s.radius !== 20
-        ? [round2(s.x), round2(s.y), s.harmonicPass ? 1 : 0, s.trackChannel, s.radius]
-        : [round2(s.x), round2(s.y)]
-    ),
-    ...(world.tubes && world.tubes.length > 0
-      ? {
-          tubes: world.tubes.map((t) => [
-            t.points.map((p) => [round2(p.x), round2(p.y)] as [number, number]),
-            t.radius ?? 14,
-            t.trackChannel,
-            t.travelDuration,
-            t.exitVx !== undefined ? round2(t.exitVx) : undefined,
-            t.exitVy !== undefined ? round2(t.exitVy) : undefined,
-          ]),
-        }
-      : {}),
+    bumpers: world.bumpers.map((b) => [round2(b.x), round2(b.y)]),
+    splitters: world.splitters.map((s) => [round2(s.x), round2(s.y)]),
+    rails: (world.rails ?? []).map((r) => [
+      r.variant,
+      round2(r.x),
+      round2(r.y),
+      Math.round(r.rotation * 1000) / 1000,
+      round2(r.armLength),
+      round2(r.openingAngle),
+      round2(r.curvature),
+      round2(r.slopeBias),
+      round2(r.channelWidth),
+      round2(r.boost),
+      r.flipped ? 1 : 0,
+    ]),
     emitters: world.emitters.map((e) => {
       if (e.trackChannel) {
         return [
@@ -244,12 +243,11 @@ export function encodeSandboxShareHash(world: WorldState): string {
 
 export function decodeSandboxShareHash(hash: string): Partial<{
   bpm: number;
-  gravity: number;
   scaleId: ScaleId;
   bars: BarPiece[];
   bumpers: BumperPiece[];
   splitters: SplitterPiece[];
-  tubes: TubePiece[];
+  rails: TransferRailPiece[];
   emitters: Emitter[];
 }> | null {
   if (!hash.startsWith("#s=")) return null;
@@ -264,7 +262,6 @@ export function decodeSandboxShareHash(hash: string): Partial<{
 
     return {
       bpm: typeof parsed.bpm === "number" ? parsed.bpm : 108,
-      gravity: typeof parsed.g === "number" ? parsed.g : undefined,
       scaleId: parsed.scaleId ?? "c_pentatonic",
       bars: (parsed.bars ?? []).map((b, i) => {
         const meta = b[5];
@@ -288,25 +285,27 @@ export function decodeSandboxShareHash(hash: string): Partial<{
         id: `sb_bmp_${i}`,
         x: b[0],
         y: b[1],
-        radius: typeof b[2] === "number" ? b[2] : 22,
-        trackChannel: typeof b[3] === "string" ? b[3] : undefined,
+        radius: 22,
       })),
       splitters: (parsed.splitters ?? []).map((s, i) => ({
         id: `sb_spl_${i}`,
         x: s[0],
         y: s[1],
-        radius: typeof s[4] === "number" ? s[4] : 20,
-        harmonicPass: s[2] === 1 ? true : undefined,
-        trackChannel: typeof s[3] === "string" ? s[3] : undefined,
+        radius: 20,
       })),
-      tubes: (parsed.tubes ?? []).map((t, i) => ({
-        id: `sb_tube_${i}`,
-        points: (t[0] ?? []).map((p) => ({ x: p[0], y: p[1] })),
-        radius: typeof t[1] === "number" ? t[1] : 14,
-        trackChannel: typeof t[2] === "string" ? t[2] : undefined,
-        travelDuration: typeof t[3] === "number" ? t[3] : undefined,
-        exitVx: typeof t[4] === "number" ? t[4] : undefined,
-        exitVy: typeof t[5] === "number" ? t[5] : undefined,
+      rails: (parsed.rails ?? []).map((r, i) => ({
+        id: `sb_rail_${i}`,
+        variant: (r[0] as RailVariant) ?? "v",
+        x: r[1],
+        y: r[2],
+        rotation: r[3] ?? 0,
+        armLength: r[4] ?? 120,
+        openingAngle: r[5] ?? 88,
+        curvature: r[6] ?? 0.52,
+        slopeBias: r[7] ?? 0,
+        channelWidth: r[8] ?? 25,
+        boost: r[9] ?? 0.25,
+        flipped: r[10] === 1,
       })),
       emitters: (parsed.emitters ?? []).map((e, i) => ({
         id: `sb_em_${i}`,

@@ -12,7 +12,31 @@ export type ScaleId =
   | "a_minor9"
   | "g_dorian";
 
-export type ToolType = MaterialType | "bumper" | "splitter" | "tube" | "emitter";
+export type ToolType = MaterialType | "bumper" | "splitter" | "emitter" | "rail";
+
+export type RailVariant = "v" | "u" | "s" | "launch";
+
+export interface TransferRailPiece {
+  id: string;
+  variant: RailVariant;
+  x: number;
+  y: number;
+  rotation: number; // radians
+  armLength: number; // px per arm (65..210)
+  openingAngle: number; // degrees (50..140)
+  curvature: number; // 0.25..0.85 fraction of armLength used for smooth rounded bottom
+  slopeBias: number; // -0.4..0.4 asymmetric tilt/elevation between entry & exit arms
+  channelWidth: number; // interior track width in px (default 25)
+  boost: number; // 0..1 optional momentum-assist along track
+  flipped?: boolean;
+  locked?: boolean;
+  // Transient visual state
+  activeGlow?: number;
+  pulseT?: number;
+  exitPulse?: number;
+  exitX?: number;
+  exitY?: number;
+}
 
 export interface MaterialSpec {
   id: MaterialType;
@@ -59,8 +83,6 @@ export interface BumperPiece {
   y: number;
   radius: number;
   locked?: boolean;
-  trackChannel?: string;
-  customRestitution?: number;
   pulse?: number;
 }
 
@@ -69,20 +91,6 @@ export interface SplitterPiece {
   x: number;
   y: number;
   radius: number;
-  locked?: boolean;
-  trackChannel?: string;
-  harmonicPass?: boolean;
-  pulse?: number;
-}
-
-export interface TubePiece {
-  id: string;
-  points: Vec2[];
-  radius?: number;
-  trackChannel?: string;
-  travelDuration?: number;
-  exitVx?: number;
-  exitVy?: number;
   locked?: boolean;
   pulse?: number;
 }
@@ -128,13 +136,8 @@ export interface Marble {
   cueTargetId?: string;
   silentCue?: boolean;
   trackChannel?: string;
-  activeTube?: {
-    tubeId: string;
-    progress: number;
-    duration: number;
-    exitVx: number;
-    exitVy: number;
-  };
+  activeRailId?: string;
+  activeRailT?: number;
 }
 
 export interface Ripple {
@@ -160,9 +163,9 @@ export interface WorldState {
   bars: BarPiece[];
   bumpers: BumperPiece[];
   splitters: SplitterPiece[];
-  tubes?: TubePiece[];
   emitters: Emitter[];
   rings: ResonanceRing[];
+  rails: TransferRailPiece[];
   marbles: Marble[];
   ripples: Ripple[];
   popups: NotePopup[];
@@ -203,6 +206,21 @@ export type PhysicsEvent =
       splitterId: string;
       x: number;
       y: number;
+    }
+  | {
+      type: "rail_enter";
+      railId: string;
+      x: number;
+      y: number;
+      t: number;
+    }
+  | {
+      type: "rail_exit";
+      railId: string;
+      x: number;
+      y: number;
+      vx: number;
+      vy: number;
     }
   | {
       type: "ring_hit";
@@ -254,4 +272,7 @@ export interface PresetDef {
   bars: Array<Omit<BarPiece, "flexOffset" | "flexVel" | "hitNx" | "hitNy">>;
   bumpers: Array<Omit<BumperPiece, "pulse">>;
   splitters: Array<Omit<SplitterPiece, "pulse">>;
+  rails?: Array<
+    Omit<TransferRailPiece, "activeGlow" | "pulseT" | "exitPulse" | "exitX" | "exitY">
+  >;
 }

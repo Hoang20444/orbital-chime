@@ -1,8 +1,14 @@
 import { MATERIALS, STAGE_H, STAGE_W } from "../theme/tokens.ts";
+import {
+  buildRailGeometry,
+  projectPointOntoRail,
+  type RailGeometry,
+} from "./railGeometry.ts";
 import type {
   BarPiece,
   Marble,
   PhysicsEvent,
+  TransferRailPiece,
   Vec2,
   WorldState,
 } from "./types.ts";
@@ -43,42 +49,6 @@ export function closestPointOnSegment(
   return { cx: ax + abx * t, cy: ay + aby * t, t };
 }
 
-function samplePolyline(
-  pts: Vec2[],
-  t01: number
-): { x: number; y: number; tx: number; ty: number; totalLen: number } {
-  let totalLen = 0;
-  const segLens: number[] = [];
-  for (let i = 0; i < pts.length - 1; i++) {
-    const l = Math.hypot(pts[i + 1].x - pts[i].x, pts[i + 1].y - pts[i].y);
-    segLens.push(l);
-    totalLen += l;
-  }
-  if (totalLen < 1e-4) {
-    return { x: pts[0].x, y: pts[0].y, tx: 1, ty: 0, totalLen: 0 };
-  }
-  const target = Math.max(0, Math.min(1, t01)) * totalLen;
-  let acc = 0;
-  for (let i = 0; i < segLens.length; i++) {
-    const l = segLens[i];
-    if (acc + l >= target || i === segLens.length - 1) {
-      const localT = l > 1e-4 ? Math.max(0, Math.min(1, (target - acc) / l)) : 0;
-      const p0 = pts[i];
-      const p1 = pts[i + 1];
-      return {
-        x: p0.x + (p1.x - p0.x) * localT,
-        y: p0.y + (p1.y - p0.y) * localT,
-        tx: l > 1e-4 ? (p1.x - p0.x) / l : 1,
-        ty: l > 1e-4 ? (p1.y - p0.y) / l : 0,
-        totalLen,
-      };
-    }
-    acc += l;
-  }
-  const last = pts[pts.length - 1];
-  return { x: last.x, y: last.y, tx: 1, ty: 0, totalLen };
-}
-
 function clampSpeed(m: Marble): void {
   const sp = Math.hypot(m.vx, m.vy);
   if (sp > MAX_SPEED) {
@@ -86,6 +56,88 @@ function clampSpeed(m: Marble): void {
     m.vx *= scale;
     m.vy *= scale;
   }
+}
+
+/**
+ * Resolves continuous capsule-wall containment and momentum-preserving gliding inside a Transfer Rail.
+ */
+function resolveMarbleInRail(
+  body: { x: number; y: number; vx: number; vy: number; radius: number },
+  rail: TransferRailPiece,
+  geom: RailGeometry,
+  dt: number
+): { inChannel: boolean; t: number } {
+  const pad = body.radius + geom.wallThickness + 16;
+  if (
+    body.x < geom.bounds.minX - pad ||
+    body.x > geom.bounds.maxX + pad ||
+    body.y < geom.bounds.minY - pad ||
+    body.y > geom.bounds.maxY + pad
+  ) {
+    return { inChannel: false, t: 0 };
+  }
+
+  const minDist = body.radius + geom.wallThickness * 0.5;
+  const minDistSq = minDist * minDist;
+
+  // Two passes stabilize corner & double-wall containment cleanly at all speeds
+  for (let pass = 0; pass < 2; pass++) {
+    for (const wall of [geom.outerWall, geom.innerWall]) {
+      for (let i = 0; i < wall.length - 1; i++) {
+        const a = wall[i];
+        const b = wall[i + 1];
+        const { cx, cy } = closestPointOnSegment(body.x, body.y, a.x, a.y, b.x, b.y);
+        const dx = body.x - cx;
+        const dy = body.y - cy;
+        const d2 = dx * dx + dy * dy;
+        if (d2 < minDistSq) {
+          const d = Math.sqrt(d2);
+          let nx = 0;
+          let ny = -1;
+          if (d > 1e-5) {
+            nx = dx / d;
+            ny = dy / d;
+          } else {
+            const wdx = b.x - a.x;
+            const wdy = b.y - a.y;
+            const wl = Math.hypot(wdx, wdy) || 1;
+            nx = -wdy / wl;
+            ny = wdx / wl;
+          }
+          const overlap = minDist - d;
+          body.x += nx * overlap;
+          body.y += ny * overlap;
+
+          const vn = body.vx * nx + body.vy * ny;
+          if (vn < 0) {
+            // Low normal restitution prevents bouncing/chatter while gliding along the curve
+            const wallRestitution = 0.12;
+            body.vx -= (1 + wallRestitution) * vn * nx;
+            body.vy -= (1 + wallRestitution) * vn * ny;
+            // Subtle rolling friction preserving natural momentum
+            body.vx *= 0.9992;
+            body.vy *= 0.9992;
+          }
+        }
+      }
+    }
+  }
+
+  const proj = projectPointOntoRail(geom, body.x, body.y);
+  const inChannel = proj.dist <= geom.halfChannel + 5 && proj.t > 0.025 && proj.t < 0.975;
+
+  if (inChannel && rail.boost > 0) {
+    const vDotT = body.vx * proj.tangent.x + body.vy * proj.tangent.y;
+    const dir = Math.abs(vDotT) < 18 ? 1 : vDotT >= 0 ? 1 : -1;
+    const speedAlong = vDotT * dir;
+    if (speedAlong < 460) {
+      const accel = rail.boost * 760 * dt;
+      body.vx += proj.tangent.x * dir * accel;
+      body.vy += proj.tangent.y * dir * accel;
+    }
+  }
+
+  return { inChannel, t: proj.t };
 }
 
 export function stepFixed(world: WorldState, isPlaying: boolean): PhysicsEvent[] {
@@ -115,17 +167,22 @@ export function stepFixed(world: WorldState, isPlaying: boolean): PhysicsEvent[]
   for (const s of world.splitters) {
     if (s.pulse && s.pulse > 0) s.pulse = Math.max(0, s.pulse - FIXED_DT * 4.0);
   }
-  if (world.tubes) {
-    for (const t of world.tubes) {
-      if (t.pulse && t.pulse > 0) t.pulse = Math.max(0, t.pulse - FIXED_DT * 3.5);
-    }
-  }
   for (const e of world.emitters) {
     if (e.pulse && e.pulse > 0) e.pulse = Math.max(0, e.pulse - FIXED_DT * 4.5);
   }
   for (const r of world.rings) {
     if (r.pulse && r.pulse > 0) r.pulse = Math.max(0, r.pulse - FIXED_DT * 3.0);
   }
+  const rails = world.rails ?? [];
+  for (const rail of rails) {
+    if (rail.activeGlow && rail.activeGlow > 0) {
+      rail.activeGlow = Math.max(0, rail.activeGlow - FIXED_DT * 2.4);
+    }
+    if (rail.exitPulse && rail.exitPulse > 0) {
+      rail.exitPulse = Math.max(0, rail.exitPulse - FIXED_DT * 3.2);
+    }
+  }
+  const railGeoms = rails.map((r) => ({ rail: r, geom: buildRailGeometry(r) }));
 
   // Update visual ripples and note popups
   for (let i = world.ripples.length - 1; i >= 0; i--) {
@@ -201,85 +258,10 @@ export function stepFixed(world: WorldState, isPlaying: boolean): PhysicsEvent[]
   for (let step = 0; step < SUB_STEPS; step++) {
     for (let mi = world.marbles.length - 1; mi >= 0; mi--) {
       const m = world.marbles[mi];
-
-      // 0. Guided transparent curved tube traversal
-      if (m.activeTube) {
-        const tube = world.tubes?.find((t) => t.id === m.activeTube!.tubeId);
-        if (!tube || tube.points.length < 2) {
-          m.activeTube = undefined;
-        } else {
-          m.activeTube.progress += subDt / Math.max(0.05, m.activeTube.duration);
-          const sample = samplePolyline(tube.points, m.activeTube.progress);
-          m.x = sample.x;
-          m.y = sample.y;
-          const sp = sample.totalLen / Math.max(0.05, m.activeTube.duration);
-          m.vx = sample.tx * sp;
-          m.vy = sample.ty * sp;
-          m.squash = 0;
-          if (m.activeTube.progress >= 1 - 1e-4) {
-            const lastPt = tube.points[tube.points.length - 1];
-            m.x = lastPt.x;
-            m.y = lastPt.y;
-            m.vx = m.activeTube.exitVx;
-            m.vy = m.activeTube.exitVy;
-            m.cooldowns[tube.id] = 0.45;
-            m.activeTube = undefined;
-          }
-          continue;
-        }
-      }
-
       m.vy += g * subDt;
       clampSpeed(m);
       m.x += m.vx * subDt;
       m.y += m.vy * subDt;
-
-      // 0b. Tube entry check
-      if (world.tubes && world.tubes.length > 0) {
-        let enteredTube = false;
-        for (const tube of world.tubes) {
-          if (tube.points.length < 2 || m.cooldowns[tube.id]) continue;
-          if (m.trackChannel && tube.trackChannel && m.trackChannel !== tube.trackChannel) {
-            continue;
-          }
-          const entry = tube.points[0];
-          const nextPt = tube.points[1];
-          const edx = nextPt.x - entry.x;
-          const edy = nextPt.y - entry.y;
-          const elen = Math.hypot(edx, edy) || 1;
-          const dotAlong = ((m.x - entry.x) * edx + (m.y - entry.y) * edy) / elen;
-          const velDot = (m.vx * edx + m.vy * edy) / elen;
-          const trigR = (tube.radius ?? 14) + m.radius * 0.25;
-          if (
-            velDot > 20 &&
-            dotAlong >= -0.5 &&
-            distSq(m.x, m.y, entry.x, entry.y) <= trigR * trigR
-          ) {
-            const info = samplePolyline(tube.points, 1);
-            const inSpeed = Math.max(200, Math.hypot(m.vx, m.vy));
-            const duration =
-              tube.travelDuration ?? Math.max(0.24, info.totalLen / inSpeed);
-            const pN1 = tube.points[tube.points.length - 2];
-            const pN = tube.points[tube.points.length - 1];
-            const segL = Math.hypot(pN.x - pN1.x, pN.y - pN1.y) || 1;
-            const exitVx = tube.exitVx ?? ((pN.x - pN1.x) / segL) * inSpeed;
-            const exitVy = tube.exitVy ?? ((pN.y - pN1.y) / segL) * inSpeed;
-            m.activeTube = {
-              tubeId: tube.id,
-              progress: 0,
-              duration,
-              exitVx,
-              exitVy,
-            };
-            m.x = entry.x;
-            m.y = entry.y;
-            tube.pulse = 1;
-            enteredTube = true;
-            break;
-          }
-        }
-        if (enteredTube) continue;
-      }
 
       // 1. Circle-vs-Capsule collisions against musical bars
       for (const bar of world.bars) {
@@ -363,9 +345,6 @@ export function stepFixed(world: WorldState, isPlaying: boolean): PhysicsEvent[]
       // 2. Circle-vs-Circle collisions against Bumpers
       for (const bumper of world.bumpers) {
         if (m.cueTargetId && m.cueTargetId !== bumper.id) continue;
-        if (m.trackChannel && bumper.trackChannel && m.trackChannel !== bumper.trackChannel) {
-          continue;
-        }
         const minDist = m.radius + bumper.radius;
         const dx = m.x - bumper.x;
         const dy = m.y - bumper.y;
@@ -380,18 +359,13 @@ export function stepFixed(world: WorldState, isPlaying: boolean): PhysicsEvent[]
           const vn = m.vx * nx + m.vy * ny;
           if (vn < 0) {
             const impactSpeed = -vn;
-            if (bumper.customRestitution !== undefined) {
-              m.vx -= (1 + bumper.customRestitution) * vn * nx;
-              m.vy -= (1 + bumper.customRestitution) * vn * ny;
-            } else {
-              m.vx -= 2.12 * vn * nx;
-              m.vy -= 2.12 * vn * ny;
-              const sp = Math.hypot(m.vx, m.vy);
-              if (sp < 420) {
-                const boost = 420 / (sp || 1);
-                m.vx *= boost;
-                m.vy *= boost;
-              }
+            m.vx -= 2.12 * vn * nx;
+            m.vy -= 2.12 * vn * ny;
+            const sp = Math.hypot(m.vx, m.vy);
+            if (sp < 420) {
+              const boost = 420 / (sp || 1);
+              m.vx *= boost;
+              m.vy *= boost;
             }
             clampSpeed(m);
 
@@ -411,53 +385,86 @@ export function stepFixed(world: WorldState, isPlaying: boolean): PhysicsEvent[]
                 x: bumper.x,
                 y: bumper.y,
                 speed: impactSpeed,
-                silentCue: wasSilentCue || bumper.customRestitution !== undefined,
+                silentCue: wasSilentCue,
               });
             }
           }
         }
       }
 
-      // 3. Prism Splitter sensor (splits 1 marble into ±26° symmetric twin streams or shimmers on harmonicPass)
+      // 2.5. Continuous Curved Transfer Rails (V-Rail guide containment)
+      for (const { rail, geom } of railGeoms) {
+        const res = resolveMarbleInRail(m, rail, geom, subDt);
+        clampSpeed(m);
+        if (res.inChannel) {
+          if (m.activeRailId !== rail.id) {
+            m.activeRailId = rail.id;
+            m.activeRailT = res.t;
+            events.push({
+              type: "rail_enter",
+              railId: rail.id,
+              x: m.x,
+              y: m.y,
+              t: res.t,
+            });
+          } else {
+            m.activeRailT = res.t;
+          }
+          rail.activeGlow = 1;
+          rail.pulseT = res.t;
+        } else if (m.activeRailId === rail.id) {
+          m.activeRailId = undefined;
+          m.activeRailT = undefined;
+          rail.exitPulse = 1;
+          rail.exitX = m.x;
+          rail.exitY = m.y;
+          events.push({
+            type: "rail_exit",
+            railId: rail.id,
+            x: m.x,
+            y: m.y,
+            vx: m.vx,
+            vy: m.vy,
+          });
+        }
+      }
+
+      // 3. Prism Splitter sensor (splits 1 marble into ±26° symmetric twin streams)
       for (const splitter of world.splitters) {
         if (m.splitHistory[splitter.id]) continue;
-        if (m.trackChannel && splitter.trackChannel && m.trackChannel !== splitter.trackChannel) {
-          continue;
-        }
         const triggerR = splitter.radius + m.radius * 0.5;
         if (distSq(m.x, m.y, splitter.x, splitter.y) <= triggerR * triggerR) {
           splitter.pulse = 1;
+          const baseSpeed = Math.max(240, Math.hypot(m.vx, m.vy) * 0.96);
+          const angle = Math.atan2(m.vy, m.vx);
+          const spread = (26 * Math.PI) / 180;
+
+          // Update original marble to left branch and spawn right branch
           m.splitHistory[splitter.id] = true;
+          const childHistory = { ...m.splitHistory };
 
-          if (!splitter.harmonicPass) {
-            const baseSpeed = Math.max(240, Math.hypot(m.vx, m.vy) * 0.96);
-            const angle = Math.atan2(m.vy, m.vx);
-            const spread = (26 * Math.PI) / 180;
-            const childHistory = { ...m.splitHistory };
+          m.x = splitter.x;
+          m.y = splitter.y;
+          m.vx = Math.cos(angle - spread) * baseSpeed;
+          m.vy = Math.sin(angle - spread) * baseSpeed;
 
-            m.x = splitter.x;
-            m.y = splitter.y;
-            m.vx = Math.cos(angle - spread) * baseSpeed;
-            m.vy = Math.sin(angle - spread) * baseSpeed;
-
-            if (world.marbles.length + spawnedFromSplit.length < MAX_MARBLES) {
-              spawnedFromSplit.push({
-                id: world.nextMarbleId++,
-                x: splitter.x,
-                y: splitter.y,
-                prevX: splitter.x,
-                prevY: splitter.y,
-                vx: Math.cos(angle + spread) * baseSpeed,
-                vy: Math.sin(angle + spread) * baseSpeed,
-                radius: m.radius,
-                age: m.age,
-                trail: [],
-                cooldowns: { ...m.cooldowns },
-                splitHistory: childHistory,
-                squash: 0.4,
-                squashAngle: angle + spread,
-              });
-            }
+          if (world.marbles.length + spawnedFromSplit.length < MAX_MARBLES) {
+            spawnedFromSplit.push({
+              id: world.nextMarbleId++,
+              x: splitter.x,
+              y: splitter.y,
+              prevX: splitter.x,
+              prevY: splitter.y,
+              vx: Math.cos(angle + spread) * baseSpeed,
+              vy: Math.sin(angle + spread) * baseSpeed,
+              radius: m.radius,
+              age: m.age,
+              trail: [],
+              cooldowns: { ...m.cooldowns },
+              splitHistory: childHistory,
+              squash: 0.4,
+              squashAngle: angle + spread,
+            });
           }
 
           events.push({
@@ -578,6 +585,11 @@ export function simulateGhostPath(
       },
     ];
 
+    const ghostRails = (world.rails ?? []).map((r) => ({
+      rail: r,
+      geom: buildRailGeometry(r),
+    }));
+
     let iterations = 0;
     while (queue.length > 0 && iterations < 6) {
       iterations++;
@@ -646,6 +658,41 @@ export function simulateGhostPath(
               orb.bounces++;
             }
           }
+        }
+
+        for (const { rail, geom } of ghostRails) {
+          resolveMarbleInRail(
+            {
+              get x() {
+                return orb.x;
+              },
+              set x(v) {
+                orb.x = v;
+              },
+              get y() {
+                return orb.y;
+              },
+              set y(v) {
+                orb.y = v;
+              },
+              get vx() {
+                return orb.vx;
+              },
+              set vx(v) {
+                orb.vx = v;
+              },
+              get vy() {
+                return orb.vy;
+              },
+              set vy(v) {
+                orb.vy = v;
+              },
+              radius: MARBLE_RADIUS,
+            },
+            rail,
+            geom,
+            FIXED_DT
+          );
         }
 
         for (const splitter of world.splitters) {

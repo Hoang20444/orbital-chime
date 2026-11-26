@@ -2,6 +2,11 @@ import * as THREE from "three";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { lengthToNote } from "../audio/scales.ts";
 import { FONTS, MATERIALS, STAGE_H, TOKENS } from "../theme/tokens.ts";
+import {
+  buildRailGeometry,
+  sampleRailCenter,
+  type RailGeometry,
+} from "./railGeometry.ts";
 import type {
   BarPiece,
   BumperPiece,
@@ -11,7 +16,7 @@ import type {
   ResonanceRing,
   Ripple,
   SplitterPiece,
-  TubePiece,
+  TransferRailPiece,
   Vec2,
   WorldState,
 } from "./types.ts";
@@ -76,12 +81,17 @@ interface RingMeshEntry {
   core: THREE.Mesh;
 }
 
-interface TubeMeshEntry {
+interface RailMeshEntry {
   group: THREE.Group;
-  pipe: THREE.Mesh;
-  collarA: THREE.Mesh;
-  collarB: THREE.Mesh;
+  outerMesh: THREE.Mesh;
+  innerMesh: THREE.Mesh;
+  troughMesh: THREE.Mesh;
+  outerStrip: THREE.Mesh;
+  innerStrip: THREE.Mesh;
+  travelSprite: THREE.Sprite;
+  exitSprite: THREE.Sprite;
   sig: string;
+  geom: RailGeometry;
 }
 
 interface MarbleMeshEntry {
@@ -146,14 +156,71 @@ function makeBackdropTexture(): THREE.CanvasTexture {
   c.height = 256;
   const g = c.getContext("2d")!;
   const grad = g.createLinearGradient(0, 0, 0, 256);
-  grad.addColorStop(0, "#FCF9F3");
-  grad.addColorStop(0.55, "#F6F3EC");
-  grad.addColorStop(1, "#EAF0EB");
+  grad.addColorStop(0, "#ECE6DA");
+  grad.addColorStop(0.55, "#E2DBD0");
+  grad.addColorStop(1, "#D7DDD6");
   g.fillStyle = grad;
   g.fillRect(0, 0, 4, 256);
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
+}
+
+function buildRibbonWallGeometry(
+  pts: Vec2[],
+  halfW: number,
+  depth: number
+): THREE.ExtrudeGeometry {
+  const n = pts.length;
+  const leftSide: Vec2[] = [];
+  const rightSide: Vec2[] = [];
+  for (let i = 0; i < n; i++) {
+    const p = pts[Math.max(0, i - 1)];
+    const q = pts[Math.min(n - 1, i + 1)];
+    const dx = q.x - p.x;
+    const dy = q.y - p.y;
+    const len = Math.hypot(dx, dy) || 1;
+    const nx = -dy / len;
+    const ny = dx / len;
+    leftSide.push({ x: pts[i].x + nx * halfW, y: -(pts[i].y + ny * halfW) });
+    rightSide.push({ x: pts[i].x - nx * halfW, y: -(pts[i].y - ny * halfW) });
+  }
+  const shape = new THREE.Shape();
+  shape.moveTo(leftSide[0].x, leftSide[0].y);
+  for (let i = 1; i < n; i++) shape.lineTo(leftSide[i].x, leftSide[i].y);
+  for (let i = n - 1; i >= 0; i--) shape.lineTo(rightSide[i].x, rightSide[i].y);
+  shape.closePath();
+
+  const geo = new THREE.ExtrudeGeometry(shape, {
+    depth,
+    bevelEnabled: true,
+    bevelSegments: 2,
+    steps: 1,
+    bevelSize: 1.1,
+    bevelThickness: 1.4,
+  });
+  geo.translate(0, 0, -depth * 0.5);
+  return geo;
+}
+
+function buildTroughGeometry(outer: Vec2[], inner: Vec2[]): THREE.ExtrudeGeometry {
+  const shape = new THREE.Shape();
+  shape.moveTo(outer[0].x, -outer[0].y);
+  for (let i = 1; i < outer.length; i++) shape.lineTo(outer[i].x, -outer[i].y);
+  for (let i = inner.length - 1; i >= 0; i--) shape.lineTo(inner[i].x, -inner[i].y);
+  shape.closePath();
+  const geo = new THREE.ExtrudeGeometry(shape, {
+    depth: 3,
+    bevelEnabled: false,
+  });
+  geo.translate(0, 0, -9);
+  return geo;
+}
+
+function buildStripTube(pts: Vec2[], z: number): THREE.TubeGeometry {
+  const vecs = pts.map((p) => new THREE.Vector3(p.x, -p.y, z));
+  const curve = new THREE.CatmullRomCurve3(vecs);
+  return new THREE.TubeGeometry(curve, 28, 0.95, 6, false);
 }
 
 function hashPhase(id: string): number {
@@ -191,7 +258,7 @@ export class OrbitalRenderer3D {
   private splitterMeshes = new Map<string, SplitterMeshEntry>();
   private emitterMeshes = new Map<string, EmitterMeshEntry>();
   private ringMeshes = new Map<string, RingMeshEntry>();
-  private tubeMeshes = new Map<string, TubeMeshEntry>();
+  private railMeshes = new Map<string, RailMeshEntry>();
   private marbleMeshes = new Map<number, MarbleMeshEntry>();
 
   private sharedMarbleGeo = new THREE.SphereGeometry(8, 32, 24);
@@ -204,6 +271,8 @@ export class OrbitalRenderer3D {
   private silentMaterial: THREE.MeshPhysicalMaterial;
   private pinMaterial: THREE.MeshPhysicalMaterial;
   private brassMat: THREE.MeshPhysicalMaterial;
+  private railGraphiteMat: THREE.MeshPhysicalMaterial;
+  private railTroughMat: THREE.MeshPhysicalMaterial;
 
   // Impact FX pools
   private impactRings: ImpactRing[] = [];
@@ -281,7 +350,7 @@ export class OrbitalRenderer3D {
     // Shadow catcher closer to bars => tight, soft contact shadows
     this.shadowPlane = new THREE.Mesh(
       new THREE.PlaneGeometry(8000, 20000),
-      new THREE.ShadowMaterial({ opacity: 0.18 })
+      new THREE.ShadowMaterial({ opacity: 0.2 })
     );
     this.shadowPlane.position.set(500, -4000, -10);
     this.shadowPlane.receiveShadow = true;
@@ -299,7 +368,7 @@ export class OrbitalRenderer3D {
     this.gridPoints = new THREE.Points(
       dotGeo,
       new THREE.PointsMaterial({
-        color: 0xcfc8ba,
+        color: 0xbdb5a4,
         size: 2.4,
         sizeAttenuation: true,
         transparent: true,
@@ -369,6 +438,21 @@ export class OrbitalRenderer3D {
       clearcoat: 1.0,
       clearcoatRoughness: 0.03,
       envMapIntensity: 1.4,
+    });
+
+    this.railGraphiteMat = new THREE.MeshPhysicalMaterial({
+      color: 0x242c36,
+      roughness: 0.28,
+      metalness: 0.82,
+      clearcoat: 0.55,
+      clearcoatRoughness: 0.18,
+      envMapIntensity: 0.9,
+    });
+
+    this.railTroughMat = new THREE.MeshPhysicalMaterial({
+      color: 0x161c24,
+      roughness: 0.5,
+      metalness: 0.65,
     });
 
     // Impact ring pool
@@ -856,79 +940,6 @@ export class OrbitalRenderer3D {
     }
   }
 
-  private syncTubes(tubes: TubePiece[], selectedId: string | null): void {
-    const alive = new Set<string>();
-    for (const tube of tubes) {
-      if (tube.points.length < 2) continue;
-      alive.add(tube.id);
-      const sig = `${tube.points.length}_${tube.points[0].x.toFixed(0)}_${tube.points[tube.points.length - 1].x.toFixed(0)}_${tube.points[tube.points.length - 1].y.toFixed(0)}`;
-      let entry = this.tubeMeshes.get(tube.id);
-      if (!entry || entry.sig !== sig) {
-        if (entry) {
-          this.scene.remove(entry.group);
-          entry.pipe.geometry.dispose();
-          (entry.pipe.material as THREE.Material).dispose();
-          entry.collarA.geometry.dispose();
-          entry.collarB.geometry.dispose();
-        }
-        const curvePts = tube.points.map((p) => new THREE.Vector3(p.x, -p.y, 2));
-        const curve = new THREE.CatmullRomCurve3(curvePts);
-        const geo = new THREE.TubeGeometry(curve, 24, 11.5, 14, false);
-        const mat = new THREE.MeshPhysicalMaterial({
-          color: 0xdff6ff,
-          roughness: 0.06,
-          metalness: 0.05,
-          clearcoat: 1.0,
-          clearcoatRoughness: 0.04,
-          transparent: true,
-          opacity: 0.34,
-          side: THREE.DoubleSide,
-          depthWrite: false,
-          emissive: new THREE.Color(0x6ad6ff),
-          emissiveIntensity: 0.08,
-        });
-        const pipe = new THREE.Mesh(geo, mat);
-
-        const cGeo = new THREE.TorusGeometry(12.2, 1.8, 10, 24);
-        const collarA = new THREE.Mesh(cGeo, this.brassMat);
-        const p0 = curvePts[0];
-        const p1 = curvePts[1];
-        const tanA = new THREE.Vector3().subVectors(p1, p0).normalize();
-        collarA.position.copy(p0);
-        collarA.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), tanA);
-
-        const collarB = new THREE.Mesh(cGeo, this.brassMat);
-        const pLast = curvePts[curvePts.length - 1];
-        const pPrev = curvePts[curvePts.length - 2];
-        const tanB = new THREE.Vector3().subVectors(pLast, pPrev).normalize();
-        collarB.position.copy(pLast);
-        collarB.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), tanB);
-
-        const group = new THREE.Group();
-        group.add(pipe, collarA, collarB);
-        this.scene.add(group);
-        entry = { group, pipe, collarA, collarB, sig };
-        this.tubeMeshes.set(tube.id, entry);
-      }
-
-      const pulse = tube.pulse ?? 0;
-      const isSel = selectedId === tube.id;
-      const pMat = entry.pipe.material as THREE.MeshPhysicalMaterial;
-      pMat.opacity = 0.32 + pulse * 0.28;
-      pMat.emissiveIntensity = isSel ? 0.5 : 0.08 + pulse * 0.65;
-    }
-
-    for (const [id, entry] of this.tubeMeshes.entries()) {
-      if (!alive.has(id)) {
-        this.scene.remove(entry.group);
-        entry.pipe.geometry.dispose();
-        (entry.pipe.material as THREE.Material).dispose();
-        entry.collarA.geometry.dispose();
-        this.tubeMeshes.delete(id);
-      }
-    }
-  }
-
   private syncMarbles(marbles: Marble[], alpha: number, dt: number): void {
     const alive = new Set<number>();
     for (const m of marbles) {
@@ -1180,6 +1191,189 @@ export class OrbitalRenderer3D {
   /*  Frame                                                         */
   /* -------------------------------------------------------------- */
 
+  private syncRails(rails: TransferRailPiece[], selectedId: string | null): void {
+    const alive = new Set<string>();
+    for (const rail of rails) {
+      alive.add(rail.id);
+      const sig = `${rail.variant}_${rail.armLength.toFixed(1)}_${rail.openingAngle.toFixed(1)}_${rail.curvature.toFixed(2)}_${rail.slopeBias.toFixed(2)}_${rail.channelWidth.toFixed(1)}_${rail.flipped ? 1 : 0}`;
+      let entry = this.railMeshes.get(rail.id);
+
+      const rebuildGeos = (geom: RailGeometry) => {
+        const localOuter = geom.outerWall.map((p) => ({
+          x: p.x - rail.x,
+          y: p.y - rail.y,
+        }));
+        const localInner = geom.innerWall.map((p) => ({
+          x: p.x - rail.x,
+          y: p.y - rail.y,
+        }));
+        // Undo world transform? buildRailGeometry already rotated & translated.
+        // Keeping mesh at (0,0,0) in world space avoids double-rotation math!
+        void localOuter;
+        void localInner;
+      };
+      void rebuildGeos;
+
+      if (!entry || entry.sig !== sig) {
+        if (entry) {
+          this.scene.remove(entry.group);
+          entry.outerMesh.geometry.dispose();
+          entry.innerMesh.geometry.dispose();
+          entry.troughMesh.geometry.dispose();
+          entry.outerStrip.geometry.dispose();
+          entry.innerStrip.geometry.dispose();
+          (entry.outerMesh.material as THREE.Material).dispose();
+          (entry.outerStrip.material as THREE.Material).dispose();
+          (entry.innerStrip.material as THREE.Material).dispose();
+          (entry.travelSprite.material as THREE.Material).dispose();
+          (entry.exitSprite.material as THREE.Material).dispose();
+        }
+        // Build geometries in local origin (0,0) and position group at (rail.x, -rail.y, 0) rotated by -rail.rotation
+        const localRail: TransferRailPiece = {
+          ...rail,
+          x: 0,
+          y: 0,
+          rotation: 0,
+        };
+        const localGeom = buildRailGeometry(localRail);
+        const worldGeom = buildRailGeometry(rail);
+
+        const group = new THREE.Group();
+        const wallMat = this.railGraphiteMat.clone();
+        const outerMesh = new THREE.Mesh(
+          buildRibbonWallGeometry(localGeom.outerWall, localGeom.wallThickness * 0.5, 16),
+          wallMat
+        );
+        outerMesh.castShadow = true;
+        outerMesh.receiveShadow = true;
+
+        const innerMesh = new THREE.Mesh(
+          buildRibbonWallGeometry(localGeom.innerWall, localGeom.wallThickness * 0.5, 16),
+          wallMat
+        );
+        innerMesh.castShadow = true;
+        innerMesh.receiveShadow = true;
+
+        const troughMesh = new THREE.Mesh(
+          buildTroughGeometry(localGeom.outerWall, localGeom.innerWall),
+          this.railTroughMat
+        );
+        troughMesh.receiveShadow = true;
+
+        const stripMatOuter = new THREE.MeshBasicMaterial({
+          color: 0x38e2ff,
+          transparent: true,
+          opacity: 0.72,
+        });
+        const stripMatInner = stripMatOuter.clone();
+
+        const outerStrip = new THREE.Mesh(
+          buildStripTube(localGeom.outerWall, 9.6),
+          stripMatOuter
+        );
+        const innerStrip = new THREE.Mesh(
+          buildStripTube(localGeom.innerWall, 9.6),
+          stripMatInner
+        );
+
+        const travelSprite = new THREE.Sprite(
+          new THREE.SpriteMaterial({
+            map: this.softDot,
+            color: 0x4ef0ff,
+            transparent: true,
+            opacity: 0,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+          })
+        );
+        travelSprite.scale.set(42, 42, 1);
+
+        const exitSprite = new THREE.Sprite(
+          new THREE.SpriteMaterial({
+            map: this.softDot,
+            color: 0x62f4ff,
+            transparent: true,
+            opacity: 0,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+          })
+        );
+        exitSprite.scale.set(48, 48, 1);
+
+        group.add(troughMesh, outerMesh, innerMesh, outerStrip, innerStrip, travelSprite);
+        this.scene.add(group);
+        this.scene.add(exitSprite);
+
+        entry = {
+          group,
+          outerMesh,
+          innerMesh,
+          troughMesh,
+          outerStrip,
+          innerStrip,
+          travelSprite,
+          exitSprite,
+          sig,
+          geom: worldGeom,
+        };
+        this.railMeshes.set(rail.id, entry);
+      }
+
+      entry.geom = buildRailGeometry(rail);
+      entry.group.position.set(rail.x, -rail.y, 0);
+      entry.group.rotation.z = -rail.rotation;
+
+      const glow = rail.activeGlow ?? 0;
+      const isSel = selectedId === rail.id;
+      const wallMat = entry.outerMesh.material as THREE.MeshPhysicalMaterial;
+      wallMat.emissive.setHex(isSel ? 0x164e63 : 0x0b4b61);
+      wallMat.emissiveIntensity = isSel ? 0.55 : glow * 0.48;
+
+      const stripOp = 0.52 + glow * 0.48;
+      (entry.outerStrip.material as THREE.MeshBasicMaterial).opacity = stripOp;
+      (entry.innerStrip.material as THREE.MeshBasicMaterial).opacity = stripOp;
+
+      if (glow > 0.04) {
+        const localGeom = buildRailGeometry({ ...rail, x: 0, y: 0, rotation: 0 });
+        const pt = sampleRailCenter(localGeom, rail.pulseT ?? 0.5);
+        entry.travelSprite.visible = true;
+        entry.travelSprite.position.set(pt.x, -pt.y, 6);
+        (entry.travelSprite.material as THREE.SpriteMaterial).opacity = glow * 0.85;
+      } else {
+        entry.travelSprite.visible = false;
+      }
+
+      const exP = rail.exitPulse ?? 0;
+      if (exP > 0.04 && rail.exitX !== undefined && rail.exitY !== undefined) {
+        entry.exitSprite.visible = true;
+        entry.exitSprite.position.set(rail.exitX, -rail.exitY, 8);
+        const s = 28 + (1 - exP) * 34;
+        entry.exitSprite.scale.set(s, s, 1);
+        (entry.exitSprite.material as THREE.SpriteMaterial).opacity = exP * 0.78;
+      } else {
+        entry.exitSprite.visible = false;
+      }
+    }
+
+    for (const [id, entry] of this.railMeshes.entries()) {
+      if (!alive.has(id)) {
+        this.scene.remove(entry.group);
+        this.scene.remove(entry.exitSprite);
+        entry.outerMesh.geometry.dispose();
+        entry.innerMesh.geometry.dispose();
+        entry.troughMesh.geometry.dispose();
+        entry.outerStrip.geometry.dispose();
+        entry.innerStrip.geometry.dispose();
+        (entry.outerMesh.material as THREE.Material).dispose();
+        (entry.outerStrip.material as THREE.Material).dispose();
+        (entry.innerStrip.material as THREE.Material).dispose();
+        (entry.travelSprite.material as THREE.Material).dispose();
+        (entry.exitSprite.material as THREE.Material).dispose();
+        this.railMeshes.delete(id);
+      }
+    }
+  }
+
   public render(
     world: WorldState,
     cameraState: CameraState,
@@ -1192,12 +1386,12 @@ export class OrbitalRenderer3D {
     this.clock += dt;
 
     this.updateCamera(cameraState);
+    this.syncRails(world.rails ?? [], selectedId);
     this.syncBars(world.bars, selectedId);
     this.syncBumpers(world.bumpers);
     this.syncSplitters(world.splitters, dt);
     this.syncEmitters(world.emitters, dt);
     this.syncRings(world.rings);
-    this.syncTubes(world.tubes ?? [], selectedId);
     this.syncMarbles(world.marbles, alpha, dt);
     this.updateFx(world, dt);
     this.renderer.render(this.scene, this.camera);
@@ -1282,28 +1476,43 @@ export class OrbitalRenderer3D {
       }
     }
 
-    // 3. Draft bar or curved glass tube preview
-    if (opts.draftTube && opts.draftTube.length >= 2) {
-      ctx.save();
-      ctx.strokeStyle = "rgba(86, 198, 232, 0.55)";
-      ctx.lineWidth = 14;
-      ctx.lineCap = "round";
-      ctx.lineJoin = "round";
-      ctx.beginPath();
-      let started = false;
-      for (const pt of opts.draftTube) {
-        const sp = this.projectToScreen(pt.x, pt.y, 4, viewW, viewH);
-        if (!sp.visible) continue;
-        if (!started) {
-          ctx.moveTo(sp.x, sp.y);
-          started = true;
-        } else {
-          ctx.lineTo(sp.x, sp.y);
-        }
+    // 2.5. Selected V-Rail handles & direction markers
+    for (const rail of world.rails ?? []) {
+      if (opts.selectedId !== rail.id) continue;
+      const geom = buildRailGeometry(rail);
+      const pEntry = this.projectToScreen(geom.entryPoint.x, geom.entryPoint.y, 10, viewW, viewH);
+      const pExit = this.projectToScreen(geom.exitPoint.x, geom.exitPoint.y, 10, viewW, viewH);
+      const pCenter = this.projectToScreen(rail.x, rail.y, 10, viewW, viewH);
+      [
+        { pt: pEntry, label: "IN", col: "#38E2FF" },
+        { pt: pExit, label: "OUT", col: "#F7A64B" },
+      ].forEach(({ pt, label, col }) => {
+        if (!pt.visible) return;
+        ctx.fillStyle = "#1E252D";
+        ctx.strokeStyle = col;
+        ctx.lineWidth = 2.4;
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, 7.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.font = `700 9px ${FONTS.mono}`;
+        ctx.fillStyle = col;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(label, pt.x, pt.y - 14);
+      });
+      if (pCenter.visible) {
+        ctx.strokeStyle = "rgba(56, 226, 255, 0.7)";
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.arc(pCenter.x, pCenter.y, 5, 0, Math.PI * 2);
+        ctx.stroke();
       }
-      ctx.stroke();
-      ctx.restore();
-    } else if (opts.draftBar) {
+    }
+
+    // 3. Draft bar preview
+    if (opts.draftBar) {
       const db = opts.draftBar;
       const pa = this.projectToScreen(db.ax, db.ay, 6, viewW, viewH);
       const pb = this.projectToScreen(db.bx, db.by, 6, viewW, viewH);
@@ -1362,11 +1571,15 @@ export class OrbitalRenderer3D {
     this.marbleMat.dispose();
     this.silentMaterial.dispose();
     this.pinMaterial.dispose();
+    this.railGraphiteMat.dispose();
+    this.railTroughMat.dispose();
     Object.values(this.barMaterials).forEach((m) => m.dispose());
-    for (const entry of this.tubeMeshes.values()) {
-      entry.pipe.geometry.dispose();
-      (entry.pipe.material as THREE.Material).dispose();
-      entry.collarA.geometry.dispose();
+    for (const entry of this.railMeshes.values()) {
+      entry.outerMesh.geometry.dispose();
+      entry.innerMesh.geometry.dispose();
+      entry.troughMesh.geometry.dispose();
+      entry.outerStrip.geometry.dispose();
+      entry.innerStrip.geometry.dispose();
     }
     for (const r of this.impactRings) r.mat.dispose();
     this.sparkPoints.geometry.dispose();

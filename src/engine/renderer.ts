@@ -8,9 +8,11 @@ import {
   drawPremiumMarble,
 } from "./materialsRenderer.ts";
 import { barLength, type GhostBranch } from "./physics.ts";
+import { buildRailGeometry, sampleRailCenter } from "./railGeometry.ts";
 import type {
   BarPiece,
   LevelSolutionHint,
+  TransferRailPiece,
   Vec2,
   WorldState,
 } from "./types.ts";
@@ -91,9 +93,116 @@ export interface RenderOptions {
   ghostBranches: GhostBranch[];
   hintOverlay: LevelSolutionHint | null;
   draftBar: Pick<BarPiece, "ax" | "ay" | "bx" | "by" | "material"> | null;
-  draftTube?: Vec2[] | null;
   interpAlpha: number;
   followedMarbleId?: number | null;
+}
+
+function drawTransferRail2D(
+  ctx: CanvasRenderingContext2D,
+  rail: TransferRailPiece,
+  isSelected: boolean,
+  isHovered: boolean
+): void {
+  const geom = buildRailGeometry(rail);
+  const glow = rail.activeGlow ?? 0;
+
+  ctx.save();
+  // Soft shadow underneath the V-rail trough
+  ctx.save();
+  ctx.translate(2.5, 4.5);
+  ctx.beginPath();
+  ctx.moveTo(geom.outerWall[0].x, geom.outerWall[0].y);
+  for (let i = 1; i < geom.outerWall.length; i++) {
+    ctx.lineTo(geom.outerWall[i].x, geom.outerWall[i].y);
+  }
+  for (let i = geom.innerWall.length - 1; i >= 0; i--) {
+    ctx.lineTo(geom.innerWall[i].x, geom.innerWall[i].y);
+  }
+  ctx.closePath();
+  ctx.fillStyle = "rgba(22, 28, 34, 0.16)";
+  ctx.fill();
+  ctx.restore();
+
+  // Dark recessed metallic trough base
+  ctx.beginPath();
+  ctx.moveTo(geom.outerWall[0].x, geom.outerWall[0].y);
+  for (let i = 1; i < geom.outerWall.length; i++) {
+    ctx.lineTo(geom.outerWall[i].x, geom.outerWall[i].y);
+  }
+  for (let i = geom.innerWall.length - 1; i >= 0; i--) {
+    ctx.lineTo(geom.innerWall[i].x, geom.innerWall[i].y);
+  }
+  ctx.closePath();
+  ctx.fillStyle = "rgba(24, 30, 38, 0.86)";
+  ctx.fill();
+
+  // Beveled graphite guiding walls
+  for (const wall of [geom.outerWall, geom.innerWall]) {
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.strokeStyle = isSelected || isHovered ? "#2E3A47" : "#222A33";
+    ctx.lineWidth = geom.wallThickness + 2.2;
+    ctx.beginPath();
+    ctx.moveTo(wall[0].x, wall[0].y);
+    for (let i = 1; i < wall.length; i++) ctx.lineTo(wall[i].x, wall[i].y);
+    ctx.stroke();
+
+    // Thin cyan luminous strip
+    ctx.strokeStyle =
+      glow > 0.04
+        ? `rgba(76, 236, 255, ${(0.72 + glow * 0.28).toFixed(3)})`
+        : isSelected
+          ? "rgba(56, 226, 255, 0.9)"
+          : "rgba(56, 226, 255, 0.58)";
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.moveTo(wall[0].x, wall[0].y);
+    for (let i = 1; i < wall.length; i++) ctx.lineTo(wall[i].x, wall[i].y);
+    ctx.stroke();
+  }
+
+  // Traveling cyan energy pulse along rail centerline
+  if (glow > 0.04) {
+    const pt = sampleRailCenter(geom, rail.pulseT ?? 0.5);
+    const rg = ctx.createRadialGradient(pt.x, pt.y, 1, pt.x, pt.y, 18);
+    rg.addColorStop(0, `rgba(120, 245, 255, ${(glow * 0.85).toFixed(3)})`);
+    rg.addColorStop(1, "rgba(56, 226, 255, 0)");
+    ctx.fillStyle = rg;
+    ctx.beginPath();
+    ctx.arc(pt.x, pt.y, 18, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Exit pulse ring
+  const exP = rail.exitPulse ?? 0;
+  if (exP > 0.04 && rail.exitX !== undefined && rail.exitY !== undefined) {
+    ctx.strokeStyle = `rgba(76, 238, 255, ${(exP * 0.78).toFixed(3)})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(rail.exitX, rail.exitY, 8 + (1 - exP) * 20, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  if (isSelected) {
+    [
+      { pt: geom.entryPoint, col: "#38E2FF", tag: "IN" },
+      { pt: geom.exitPoint, col: "#F7A64B", tag: "OUT" },
+    ].forEach(({ pt, col, tag }) => {
+      ctx.fillStyle = "#1E252D";
+      ctx.strokeStyle = col;
+      ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      ctx.arc(pt.x, pt.y, 7, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.font = `700 9px ${FONTS.mono}`;
+      ctx.fillStyle = col;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(tag, pt.x, pt.y - 13);
+    });
+  }
+  ctx.restore();
 }
 
 function drawPhysicalBar(
@@ -139,7 +248,7 @@ export function renderWorld(
 
   const boardW = worldMaxX - worldMinX;
   const boardH = worldMaxY - worldMinY;
-  ctx.fillStyle = TOKENS.paper;
+  ctx.fillStyle = "#EDE7DC";
   ctx.beginPath();
   ctx.roundRect(worldMinX, worldMinY, boardW, boardH, 12 / scale);
   ctx.fill();
@@ -335,57 +444,14 @@ export function renderWorld(
     );
   }
 
-  // 8b. Transparent Curved Glass Tubes
-  for (const tube of world.tubes ?? []) {
-    if (tube.points.length < 2) continue;
-    const isSel = opts.selectedId === tube.id;
-    const pulse = tube.pulse ?? 0;
-    ctx.save();
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
-
-    // Soft cast shadow underneath tube
-    ctx.strokeStyle = "rgba(28, 35, 33, 0.08)";
-    ctx.lineWidth = 22;
-    ctx.beginPath();
-    tube.points.forEach((p, idx) =>
-      idx === 0 ? ctx.moveTo(p.x + 2, p.y + 4) : ctx.lineTo(p.x + 2, p.y + 4)
+  // 8.5. Transfer Rails (Dark Graphite + Cyan Luminous V-Rail)
+  for (const rail of world.rails ?? []) {
+    drawTransferRail2D(
+      ctx,
+      rail,
+      opts.selectedId === rail.id,
+      opts.hoveredId === rail.id
     );
-    ctx.stroke();
-
-    // Translucent cyan-glass body
-    ctx.strokeStyle = isSel
-      ? "rgba(104, 212, 245, 0.45)"
-      : `rgba(176, 232, 248, ${(0.34 + pulse * 0.25).toFixed(3)})`;
-    ctx.lineWidth = 20;
-    ctx.beginPath();
-    tube.points.forEach((p, idx) =>
-      idx === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)
-    );
-    ctx.stroke();
-
-    // Specular inner highlight line
-    ctx.strokeStyle = `rgba(255, 255, 255, ${(0.52 + pulse * 0.35).toFixed(3)})`;
-    ctx.lineWidth = 4;
-    ctx.beginPath();
-    tube.points.forEach((p, idx) =>
-      idx === 0 ? ctx.moveTo(p.x - 1, p.y - 3) : ctx.lineTo(p.x - 1, p.y - 3)
-    );
-    ctx.stroke();
-
-    // Brass collar rings at entry & exit
-    const pStart = tube.points[0];
-    const pEnd = tube.points[tube.points.length - 1];
-    [pStart, pEnd].forEach((ep) => {
-      ctx.fillStyle = "#E8D298";
-      ctx.strokeStyle = isSel ? TOKENS.ink : "#9A7724";
-      ctx.lineWidth = 1.6;
-      ctx.beginPath();
-      ctx.arc(ep.x, ep.y, 11, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
-    });
-    ctx.restore();
   }
 
   // 9. Physical Acoustic Bars

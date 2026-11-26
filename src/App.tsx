@@ -4,6 +4,7 @@ import { synthEngine } from "./audio/synthEngine.ts";
 import { rhythmEngine } from "./music/rhythm/rhythmSingleton.ts";
 import { BarInspectorPill } from "./components/BarInspectorPill.tsx";
 import { DockBar } from "./components/DockBar.tsx";
+import { RailInspectorPill } from "./components/RailInspectorPill.tsx";
 import { SongStudioModal } from "./components/SongStudioModal.tsx";
 import { TopBar } from "./components/TopBar.tsx";
 import { WinBanner } from "./components/WinBanner.tsx";
@@ -40,12 +41,14 @@ import {
   encodeSandboxShareHash,
   type EditableSnapshot,
 } from "./engine/serializer.ts";
+import { buildRailGeometry } from "./engine/railGeometry.ts";
 import type {
   BarPiece,
   MaterialType,
   PieceBudget,
   ScaleId,
   ToolType,
+  TransferRailPiece,
   WorldState,
 } from "./engine/types.ts";
 import {
@@ -78,13 +81,6 @@ type DragState =
       lastDegree: number;
     }
   | {
-      kind: "draw_tube";
-      ax: number;
-      ay: number;
-      bx: number;
-      by: number;
-    }
-  | {
       kind: "move_bar";
       id: string;
       startWorldX: number;
@@ -109,30 +105,29 @@ type DragState =
       snapshotBefore: EditableSnapshot;
     }
   | {
+      kind: "move_rail";
+      id: string;
+      startWorldX: number;
+      startWorldY: number;
+      origX: number;
+      origY: number;
+      snapshotBefore: EditableSnapshot;
+    }
+  | {
+      kind: "drag_rail_handle";
+      id: string;
+      end: "entry" | "exit";
+      origRot: number;
+      origStartAngle: number;
+      snapshotBefore: EditableSnapshot;
+    }
+  | {
       kind: "pan_camera";
       startClientX: number;
       startClientY: number;
       origFocusX: number;
       origFocusY: number;
     };
-
-function buildCurvedTubePoints(ax: number, ay: number, bx: number, by: number): Array<{ x: number; y: number }> {
-  const span = Math.hypot(bx - ax, by - ay);
-  const sag = Math.min(72, Math.max(22, span * 0.24));
-  const cx = (ax + bx) * 0.5;
-  const cy = (ay + by) * 0.5 + sag;
-  const pts: Array<{ x: number; y: number }> = [];
-  const segs = 16;
-  for (let i = 0; i <= segs; i++) {
-    const u = i / segs;
-    const iu = 1 - u;
-    pts.push({
-      x: iu * iu * ax + 2 * iu * u * cx + u * u * bx,
-      y: iu * iu * ay + 2 * iu * u * cy + u * u * by,
-    });
-  }
-  return pts;
-}
 
 function clampToWorkspace(
   x: number,
@@ -156,6 +151,7 @@ export const App: React.FC = () => {
   const [mode, setMode] = useState<"puzzle" | "sandbox">(() =>
     window.location.hash.startsWith("#s=") ||
     window.location.hash.startsWith("#song=") ||
+    window.location.hash.startsWith("#preset=") ||
     window.location.hash.startsWith("#studio=")
       ? "sandbox"
       : "puzzle"
@@ -263,6 +259,23 @@ export const App: React.FC = () => {
       setMode("sandbox");
       setShowTip(false);
       syncUi();
+    } else if (window.location.hash.startsWith("#preset=")) {
+      const pid = window.location.hash.slice("#preset=".length).trim();
+      const preset = SANDBOX_PRESETS.find((p) => p.id === pid);
+      if (preset) {
+        const w = createWorldFromPreset(preset);
+        worldRef.current = w;
+        setPresetId(preset.id);
+        setMode("sandbox");
+        synthEngine.setBpm(w.bpm);
+        rhythmEngine.setBpm(w.bpm);
+        setBpm(w.bpm);
+        setScaleId(w.scaleId);
+        setIsPlaying(true);
+        setFollowBall(false);
+        setShowTip(false);
+        syncUi();
+      }
     } else if (window.location.hash.startsWith("#song=")) {
       const songId = window.location.hash.slice("#song=".length).trim();
       const song = MARBLE_SONGS.find((s) => s.id === songId);
@@ -288,12 +301,11 @@ export const App: React.FC = () => {
       if (decoded) {
         const base = createWorldFromPreset(SANDBOX_PRESETS[0]);
         if (decoded.bpm) base.bpm = decoded.bpm;
-        if (decoded.gravity !== undefined) base.gravity = decoded.gravity;
         if (decoded.scaleId) base.scaleId = decoded.scaleId;
         if (decoded.bars) base.bars = decoded.bars;
         if (decoded.bumpers) base.bumpers = decoded.bumpers;
         if (decoded.splitters) base.splitters = decoded.splitters;
-        if (decoded.tubes) base.tubes = decoded.tubes;
+        if (decoded.rails) base.rails = decoded.rails;
         if (decoded.emitters && decoded.emitters.length > 0) {
           base.emitters = decoded.emitters;
         }
@@ -465,18 +477,18 @@ export const App: React.FC = () => {
     const bIdx = world.bars.findIndex((b) => b.id === id && !b.locked);
     const bmpIdx = world.bumpers.findIndex((b) => b.id === id && !b.locked);
     const splIdx = world.splitters.findIndex((s) => s.id === id && !s.locked);
-    const tubeIdx = (world.tubes ?? []).findIndex((tb) => tb.id === id && !tb.locked);
+    const railIdx = (world.rails ?? []).findIndex((r) => r.id === id && !r.locked);
     const emIdx =
       modeRef.current === "sandbox" && world.emitters.length > 1
         ? world.emitters.findIndex((e) => e.id === id)
         : -1;
 
-    if (bIdx < 0 && bmpIdx < 0 && splIdx < 0 && tubeIdx < 0 && emIdx < 0) return;
+    if (bIdx < 0 && bmpIdx < 0 && splIdx < 0 && railIdx < 0 && emIdx < 0) return;
     pushUndo();
     if (bIdx >= 0) world.bars.splice(bIdx, 1);
     if (bmpIdx >= 0) world.bumpers.splice(bmpIdx, 1);
     if (splIdx >= 0) world.splitters.splice(splIdx, 1);
-    if (tubeIdx >= 0 && world.tubes) world.tubes.splice(tubeIdx, 1);
+    if (railIdx >= 0) world.rails.splice(railIdx, 1);
     if (emIdx >= 0) world.emitters.splice(emIdx, 1);
     synthEngine.playUiTick();
     setSelectedId(null);
@@ -513,7 +525,7 @@ export const App: React.FC = () => {
       w.bars = [];
       w.bumpers = [];
       w.splitters = [];
-      w.tubes = [];
+      w.rails = [];
       w.marbles = [];
       w.emitters = [
         {
@@ -695,6 +707,16 @@ export const App: React.FC = () => {
               maxRadius: 30,
               doubleRing: false,
             });
+          } else if (ev.type === "rail_exit") {
+            world.ripples.push({
+              x: ev.x,
+              y: ev.y,
+              color: "#38E2FF",
+              age: 0,
+              duration: 0.42,
+              maxRadius: 34,
+              doubleRing: false,
+            });
           } else if (ev.type === "ring_hit") {
             synthEngine.playRingCharge(
               ev.x,
@@ -800,10 +822,6 @@ export const App: React.FC = () => {
                 material: drag.material,
               }
             : null;
-        const draftTube =
-          drag.kind === "draw_tube"
-            ? buildCurvedTubePoints(drag.ax, drag.ay, drag.bx, drag.by)
-            : null;
 
         const showGhost =
           !isPlayingRef.current || drag.kind !== "none" || selectedIdRef.current !== null;
@@ -831,7 +849,6 @@ export const App: React.FC = () => {
           ghostBranches,
           hintOverlay,
           draftBar,
-          draftTube,
           interpAlpha,
           followedMarbleId: followBallRef.current
             ? followedMarbleIdRef.current
@@ -913,25 +930,38 @@ export const App: React.FC = () => {
       }
     }
 
+    for (let i = (world.rails ?? []).length - 1; i >= 0; i--) {
+      const r = world.rails[i];
+      if (r.locked) continue;
+      const geom = buildRailGeometry(r);
+      if (distSq(wx, wy, geom.entryPoint.x, geom.entryPoint.y) <= 18 * 18) {
+        return { kind: "rail_handle" as const, rail: r, end: "entry" as const };
+      }
+      if (distSq(wx, wy, geom.exitPoint.x, geom.exitPoint.y) <= 18 * 18) {
+        return { kind: "rail_handle" as const, rail: r, end: "exit" as const };
+      }
+      const pts = geom.centerPoints;
+      for (let j = 0; j < pts.length - 1; j++) {
+        const { cx, cy } = closestPointOnSegment(
+          wx,
+          wy,
+          pts[j].x,
+          pts[j].y,
+          pts[j + 1].x,
+          pts[j + 1].y
+        );
+        if (distSq(wx, wy, cx, cy) <= (geom.halfChannel + 8) ** 2) {
+          return { kind: "rail_body" as const, rail: r };
+        }
+      }
+    }
+
     for (let i = world.bars.length - 1; i >= 0; i--) {
       const b = world.bars[i];
       if (b.locked) continue;
       const { cx, cy } = closestPointOnSegment(wx, wy, b.ax, b.ay, b.bx, b.by);
       if (distSq(wx, wy, cx, cy) <= 16 * 16) {
         return { kind: "bar_body" as const, bar: b };
-      }
-    }
-
-    for (let i = (world.tubes ?? []).length - 1; i >= 0; i--) {
-      const tb = world.tubes![i];
-      if (tb.locked || tb.points.length < 2) continue;
-      for (let k = 0; k < tb.points.length - 1; k++) {
-        const p0 = tb.points[k];
-        const p1 = tb.points[k + 1];
-        const { cx, cy } = closestPointOnSegment(wx, wy, p0.x, p0.y, p1.x, p1.y);
-        if (distSq(wx, wy, cx, cy) <= 16 * 16) {
-          return { kind: "tube" as const, item: tb };
-        }
       }
     }
 
@@ -979,7 +1009,9 @@ export const App: React.FC = () => {
         const id =
           hit.kind === "bar_end" || hit.kind === "bar_body"
             ? hit.bar.id
-            : hit.item.id;
+            : hit.kind === "rail_handle" || hit.kind === "rail_body"
+              ? hit.rail.id
+              : hit.item.id;
         setSelectedId(id);
         selectedIdRef.current = id;
         handleDeleteSelected();
@@ -1019,8 +1051,27 @@ export const App: React.FC = () => {
           origBy: hit.bar.by,
           snapshotBefore: snap,
         };
-      } else if (hit.kind === "tube") {
-        setSelectedId(hit.item.id);
+      } else if (hit.kind === "rail_handle") {
+        setSelectedId(hit.rail.id);
+        dragRef.current = {
+          kind: "drag_rail_handle",
+          id: hit.rail.id,
+          end: hit.end,
+          origRot: hit.rail.rotation,
+          origStartAngle: Math.atan2(pt.y - hit.rail.y, pt.x - hit.rail.x),
+          snapshotBefore: snap,
+        };
+      } else if (hit.kind === "rail_body") {
+        setSelectedId(hit.rail.id);
+        dragRef.current = {
+          kind: "move_rail",
+          id: hit.rail.id,
+          startWorldX: pt.x,
+          startWorldY: pt.y,
+          origX: hit.rail.x,
+          origY: hit.rail.y,
+          snapshotBefore: snap,
+        };
       } else {
         setSelectedId(hit.item.id);
         dragRef.current = {
@@ -1054,14 +1105,6 @@ export const App: React.FC = () => {
         material: activeTool,
         lastDegree: -1,
       };
-    } else if (activeTool === "tube") {
-      dragRef.current = {
-        kind: "draw_tube",
-        ax: clamped.x,
-        ay: clamped.y,
-        bx: clamped.x,
-        by: clamped.y,
-      };
     } else {
       pushUndo();
       const w = worldRef.current;
@@ -1072,6 +1115,23 @@ export const App: React.FC = () => {
       } else if (activeTool === "splitter") {
         w.splitters.push({ id: newId, x: clamped.x, y: clamped.y, radius: 20 });
         synthEngine.playSplitterChime(clamped.x);
+      } else if (activeTool === "rail") {
+        const newRail: TransferRailPiece = {
+          id: newId,
+          variant: "v",
+          x: clamped.x,
+          y: clamped.y,
+          rotation: 0.12,
+          armLength: 130,
+          openingAngle: 88,
+          curvature: 0.56,
+          slopeBias: 0.08,
+          channelWidth: 26,
+          boost: 0.2,
+        };
+        if (!w.rails) w.rails = [];
+        w.rails.push(newRail);
+        synthEngine.playUiTick();
       } else if (activeTool === "emitter" && mode === "sandbox") {
         w.emitters.push({
           id: newId,
@@ -1106,7 +1166,9 @@ export const App: React.FC = () => {
       hoveredIdRef.current = hit
         ? hit.kind === "bar_end" || hit.kind === "bar_body"
           ? hit.bar.id
-          : hit.item.id
+          : hit.kind === "rail_handle" || hit.kind === "rail_body"
+            ? hit.rail.id
+            : hit.item.id
         : null;
       return;
     }
@@ -1120,22 +1182,7 @@ export const App: React.FC = () => {
       return;
     }
 
-    if (drag.kind === "draw_tube") {
-      const len = Math.hypot(drag.bx - drag.ax, drag.by - drag.ay);
-      if (len >= 48) {
-        pushUndo();
-        const newTube = {
-          id: `tube_${Date.now()}`,
-          points: buildCurvedTubePoints(drag.ax, drag.ay, drag.bx, drag.by),
-          radius: 15,
-        };
-        if (!worldRef.current.tubes) worldRef.current.tubes = [];
-        worldRef.current.tubes.push(newTube);
-        setSelectedId(newTube.id);
-        synthEngine.playUiTick();
-        syncUi();
-      }
-    } else if (drag.kind === "draw_bar") {
+    if (drag.kind === "draw_bar") {
       drag.bx = clamped.x;
       drag.by = clamped.y;
       const len = Math.hypot(drag.bx - drag.ax, drag.by - drag.ay);
@@ -1186,6 +1233,21 @@ export const App: React.FC = () => {
           );
         }
       }
+    } else if (drag.kind === "move_rail") {
+      const rail = (worldRef.current.rails ?? []).find((r) => r.id === drag.id);
+      if (rail) {
+        rail.x = drag.origX + (pt.x - drag.startWorldX);
+        rail.y = drag.origY + (pt.y - drag.startWorldY);
+      }
+    } else if (drag.kind === "drag_rail_handle") {
+      const rail = (worldRef.current.rails ?? []).find((r) => r.id === drag.id);
+      if (rail) {
+        const curAng = Math.atan2(pt.y - rail.y, pt.x - rail.x);
+        rail.rotation = drag.origRot + (curAng - drag.origStartAngle);
+        const dist = Math.hypot(pt.x - rail.x, pt.y - rail.y);
+        rail.armLength = Math.max(65, Math.min(210, dist));
+        syncUi();
+      }
     } else if (drag.kind === "move_circle") {
       const w = worldRef.current;
       const arr =
@@ -1209,22 +1271,7 @@ export const App: React.FC = () => {
       return;
     }
 
-    if (drag.kind === "draw_tube") {
-      const len = Math.hypot(drag.bx - drag.ax, drag.by - drag.ay);
-      if (len >= 48) {
-        pushUndo();
-        const newTube = {
-          id: `tube_${Date.now()}`,
-          points: buildCurvedTubePoints(drag.ax, drag.ay, drag.bx, drag.by),
-          radius: 15,
-        };
-        if (!worldRef.current.tubes) worldRef.current.tubes = [];
-        worldRef.current.tubes.push(newTube);
-        setSelectedId(newTube.id);
-        synthEngine.playUiTick();
-        syncUi();
-      }
-    } else if (drag.kind === "draw_bar") {
+    if (drag.kind === "draw_bar") {
       const len = Math.hypot(drag.bx - drag.ax, drag.by - drag.ay);
       if (len >= 48) {
         pushUndo();
@@ -1250,7 +1297,9 @@ export const App: React.FC = () => {
     } else if (
       drag.kind === "move_bar" ||
       drag.kind === "drag_end" ||
-      drag.kind === "move_circle"
+      drag.kind === "move_circle" ||
+      drag.kind === "move_rail" ||
+      drag.kind === "drag_rail_handle"
     ) {
       undoStackRef.current.push(drag.snapshotBefore);
       if (undoStackRef.current.length > 40) undoStackRef.current.shift();
@@ -1267,7 +1316,7 @@ export const App: React.FC = () => {
       w.bars.some((b) => b.id === selectedId && !b.locked) ||
       w.bumpers.some((b) => b.id === selectedId && !b.locked) ||
       w.splitters.some((s) => s.id === selectedId && !s.locked) ||
-      (w.tubes ?? []).some((tb) => tb.id === selectedId && !tb.locked) ||
+      (w.rails ?? []).some((r) => r.id === selectedId && !r.locked) ||
       (mode === "sandbox" &&
         w.emitters.length > 1 &&
         w.emitters.some((e) => e.id === selectedId))
@@ -1376,19 +1425,35 @@ export const App: React.FC = () => {
         selectedId &&
         (() => {
           const bar = worldRef.current.bars.find((b) => b.id === selectedId);
-          if (!bar) return null;
-          return (
-            <BarInspectorPill
-              locale={locale}
-              bar={bar}
-              scaleId={scaleId}
-              onUpdateBar={(patch) => {
-                pushUndo();
-                Object.assign(bar, patch);
-                syncUi();
-              }}
-            />
-          );
+          if (bar) {
+            return (
+              <BarInspectorPill
+                locale={locale}
+                bar={bar}
+                scaleId={scaleId}
+                onUpdateBar={(patch) => {
+                  pushUndo();
+                  Object.assign(bar, patch);
+                  syncUi();
+                }}
+              />
+            );
+          }
+          const rail = (worldRef.current.rails ?? []).find((r) => r.id === selectedId);
+          if (rail) {
+            return (
+              <RailInspectorPill
+                locale={locale}
+                rail={rail}
+                onUpdateRail={(patch) => {
+                  pushUndo();
+                  Object.assign(rail, patch);
+                  syncUi();
+                }}
+              />
+            );
+          }
+          return null;
         })()}
 
       {mode === "puzzle" && (

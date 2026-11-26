@@ -35,8 +35,8 @@ export type Strings = {
     bass: string;
     bumper: string;
     splitter: string;
-    tube: string;
     emitter: string;
+    rail: string;
   };
   tooltips: {
     play: string;
@@ -46,8 +46,8 @@ export type Strings = {
     bass: string;
     bumper: string;
     splitter: string;
-    tube: string;
     emitter: string;
+    rail: string;
     undo: string;
     redo: string;
     hint: string;
@@ -102,8 +102,8 @@ export const I18N: Record<Locale, Strings> = {
       bass: "Bass",
       bumper: "Bumper",
       splitter: "Prism",
-      tube: "Tube",
       emitter: "Emitter",
+      rail: "V-Rail",
     },
     tooltips: {
       play: "Start or pause simulation [Space]",
@@ -113,8 +113,8 @@ export const I18N: Record<Locale, Strings> = {
       bass: "Slate metal slab · Deep bass [4]",
       bumper: "Elastic bumper · Lifts marbles upward",
       splitter: "Prism splitter · Divides 1 marble into 2",
-      tube: "Glass tube · Drag to draw a curved marble guide",
       emitter: "Beat emitter · Drops marbles on rhythm",
+      rail: "V-Rail · Curved graphite guide transferring marbles smoothly",
       undo: "Undo last change [Ctrl+Z]",
       redo: "Redo undone change [Ctrl+Y]",
       hint: "Show dashed placement guide [H]",
@@ -167,8 +167,8 @@ export const I18N: Record<Locale, Strings> = {
       bass: "Trầm",
       bumper: "Đệm nảy",
       splitter: "Chia tia",
-      tube: "Ống dẫn",
       emitter: "Nguồn bi",
+      rail: "Ray chữ V",
     },
     tooltips: {
       play: "Chạy hoặc dừng mô phỏng [Space]",
@@ -178,8 +178,8 @@ export const I18N: Record<Locale, Strings> = {
       bass: "Thanh kim loại trầm · Giữ nhịp nền [4]",
       bumper: "Đệm đàn hồi · Bật bi vọt lên cao",
       splitter: "Lăng kính · Tách 1 bi thành 2 nhánh",
-      tube: "Ống thủy tinh cong · Kéo để dẫn bóng chảy xuống thanh tiếp theo",
       emitter: "Nguồn thả bi theo nhịp BPM",
+      rail: "Ray dẫn chữ V · Rãnh cong dẫn bi mượt sang thanh khác",
       undo: "Hoàn tác bước vừa làm [Ctrl+Z]",
       redo: "Khôi phục bước vừa hoàn tác [Ctrl+Y]",
       hint: "Hiện khung gợi ý đặt thanh [H]",

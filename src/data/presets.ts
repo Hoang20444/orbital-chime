@@ -69,4 +69,36 @@ export const SANDBOX_PRESETS: PresetDef[] = [
     ],
     splitters: [],
   },
+  {
+    id: "v-rail-transfer",
+    nameEn: "V-Rail Transfer",
+    nameVi: "Cầu dẫn V-Rail",
+    bpm: 100,
+    scaleId: "a_minor9",
+    emitters: [
+      { id: "e1", x: 276, y: 88, vx: 12, vy: 0, beatInterval: 2.5, phaseOffset: 0 },
+    ],
+    rails: [
+      {
+        id: "rail1",
+        variant: "v",
+        x: 372,
+        y: 325,
+        rotation: 0.14,
+        armLength: 148,
+        openingAngle: 86,
+        curvature: 0.58,
+        slopeBias: 0.1,
+        channelWidth: 26,
+        boost: 0.25,
+      },
+    ],
+    bars: [
+      { id: "b1", ax: 680, ay: 338, bx: 795, by: 312, material: "marimba" },
+      { id: "b2", ax: 865, ay: 345, bx: 995, by: 305, material: "ceramic" },
+      { id: "b3", ax: 675, ay: 470, bx: 815, by: 485, material: "brass" },
+    ],
+    bumpers: [],
+    splitters: [],
+  },
 ];

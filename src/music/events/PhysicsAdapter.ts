@@ -75,6 +75,7 @@ export function buildKineticStageForSong(song: GeneratedSong): {
     bars,
     bumpers: [{ id: kickBumperId, x: 500, y: 565, radius: 24 }],
     splitters: [],
+    rails: [],
     emitters: [
       // Rail emitters provide visual context; SongDirector drives beat-accurate cue launches
       {

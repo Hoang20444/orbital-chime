@@ -26,6 +26,7 @@ export function createWorldFromLevel(
     bars: [...fixedBars, ...playerBars],
     bumpers: [...fixedBumpers, ...playerBumpers],
     splitters: [...fixedSplitters, ...playerSplitters],
+    rails: [],
     emitters: level.emitters.map((e) => ({
       ...e,
       locked: true,
@@ -49,6 +50,7 @@ export function createWorldFromPreset(preset: PresetDef): WorldState {
     bars: preset.bars.map((b) => ({ ...b, locked: false })),
     bumpers: preset.bumpers.map((b) => ({ ...b, locked: false })),
     splitters: preset.splitters.map((s) => ({ ...s, locked: false })),
+    rails: (preset.rails ?? []).map((r) => ({ ...r, locked: false })),
     emitters: preset.emitters.map((e) => ({
       ...e,
       locked: false,
