@@ -31,6 +31,7 @@ export function cloneEditableSnapshot(world: WorldState): EditableSnapshot {
       customRestitution: b.customRestitution,
       noteLabel: b.noteLabel,
       trackChannel: b.trackChannel,
+      silent: b.silent,
     })),
     bumpers: world.bumpers.map((b) => ({
       id: b.id,
@@ -78,6 +79,7 @@ interface BarShareMeta {
   r?: number;
   l?: string;
   c?: string;
+  s?: 1;
 }
 
 type SerializedBarTuple =
@@ -130,6 +132,10 @@ export function encodeSandboxShareHash(world: WorldState): string {
       }
       if (b.trackChannel !== undefined) {
         meta.c = b.trackChannel;
+        hasMeta = true;
+      }
+      if (b.silent) {
+        meta.s = 1;
         hasMeta = true;
       }
       if (hasMeta) {
@@ -224,6 +230,7 @@ export function decodeSandboxShareHash(hash: string): Partial<{
           customRestitution: meta?.r,
           noteLabel: meta?.l,
           trackChannel: meta?.c,
+          silent: meta?.s === 1 ? true : undefined,
         };
       }),
       bumpers: (parsed.bumpers ?? []).map((b, i) => ({

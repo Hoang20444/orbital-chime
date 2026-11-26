@@ -113,29 +113,23 @@ function quantizeAndReduceDrums(
 }
 
 /**
- * Partition chronological notes into safe physical chains so:
- * 1) Every chain has <= maxNotesPerChain (fitting cleanly on screen with >= 46px bar separation).
- * 2) Consecutive notes in the SAME chain ALWAYS have dtSec >= minHopSec (~0.26s, so impactSpeed > 45 > 32).
- *    Faster 1/16th subdivisions automatically interleave onto alternating lanes!
+ * Keep ONE continuous marble chain per musical lane whenever possible so balls travel
+ * top-to-bottom in parallel without vanishing mid-song. Only if consecutive notes are
+ * faster than ~0.27s (1/16th bursts) do we interleave onto a parallel dancer lane.
  */
-function partitionSafeChains(
+function partitionContinuousChains(
   notes: SongHitNote[],
-  bpm: number,
-  maxNotesPerChain = 16
+  bpm: number
 ): SongHitNote[][] {
   if (notes.length === 0) return [];
   const minHopBeats = Math.max(0.45, (0.27 * bpm) / 60);
-  // Prevent multi-second rests from forcing huge parabolic launches (> MAX_SPEED)
-  const maxHopBeats = Math.max(1.5, (1.35 * bpm) / 60);
   const chains: SongHitNote[][] = [];
 
   for (const note of notes) {
     let placed = false;
     for (const ch of chains) {
-      if (ch.length >= maxNotesPerChain) continue;
       const last = ch[ch.length - 1];
-      const dt = note.beat - last.beat;
-      if (dt >= minHopBeats - 1e-4 && dt <= maxHopBeats + 1e-4) {
+      if (note.beat - last.beat >= minHopBeats - 1e-4) {
         ch.push(note);
         placed = true;
         break;
@@ -179,43 +173,47 @@ export function convertDraftToMarbleSong(draft: CustomSongDraft): MarbleSongDef 
     label: drumLabel(n.drum),
   }));
 
-  // Partition into safe chains; keep total rows compact (max 4 visual tiers if all 3 tracks are full)
-  const melGroups = partitionSafeChains(melHitNotes, bpm, 16);
-  const drumGroups = partitionSafeChains(drumHitNotes, bpm, 16);
-  const bassGroups = partitionSafeChains(bassHitNotes, bpm, 16);
+  const melGroups = partitionContinuousChains(melHitNotes, bpm);
+  const drumGroups = partitionContinuousChains(drumHitNotes, bpm);
+  const bassGroups = partitionContinuousChains(bassHitNotes, bpm);
 
   interface GroupEntry {
+    id: string;
     kind: "mel" | "drum" | "bass";
     notes: SongHitNote[];
     defaultInstrument: MelodicInstrumentId;
   }
 
-  const orderedGroups: GroupEntry[] = [];
-  for (const g of melGroups.slice(0, 2)) {
-    orderedGroups.push({
+  const activeGroups: GroupEntry[] = [];
+  if (bassGroups.length > 0) {
+    activeGroups.push({
+      id: "bass",
+      kind: "bass",
+      notes: bassGroups[0],
+      defaultInstrument: draft.bassVoice,
+    });
+  }
+  melGroups.slice(0, 2).forEach((g, idx) => {
+    activeGroups.push({
+      id: idx === 0 ? "melody" : `melody_${idx}`,
       kind: "mel",
       notes: g,
       defaultInstrument: draft.leadVoice,
     });
-  }
-  for (const g of drumGroups.slice(0, 2)) {
-    orderedGroups.push({
+  });
+  if (drumGroups.length > 0) {
+    activeGroups.push({
+      id: "perc",
       kind: "drum",
-      notes: g,
+      notes: drumGroups[0],
       defaultInstrument: "bass",
-    });
-  }
-  for (const g of bassGroups.slice(0, 2)) {
-    orderedGroups.push({
-      kind: "bass",
-      notes: g,
-      defaultInstrument: draft.bassVoice,
     });
   }
 
   // Fallback if completely empty draft
-  if (orderedGroups.length === 0) {
-    orderedGroups.push({
+  if (activeGroups.length === 0) {
+    activeGroups.push({
+      id: "melody",
       kind: "mel",
       defaultInstrument: draft.leadVoice,
       notes: [
@@ -227,29 +225,50 @@ export function convertDraftToMarbleSong(draft: CustomSongDraft): MarbleSongDef 
     });
   }
 
-  // Distribute startY cleanly across [140..605] (>= 110px tier spacing -> zero emitter overlap!)
-  const finalGroups = orderedGroups.slice(0, 5);
-  const count = finalGroups.length;
-  const startYForIndex = (idx: number): number => {
-    if (count === 1) return 260;
-    if (count === 2) return idx === 0 ? 185 : 410;
-    if (count === 3) return [150, 355, 555][idx] ?? 355;
-    if (count === 4) return [142, 286, 435, 582][idx] ?? 400;
-    return [136, 252, 368, 484, 600][idx] ?? 400;
-  };
+  // Assign parallel horizontal zigzag corridors so all marbles fall simultaneously top-to-bottom
+  const totalCorridors = activeGroups.length;
+  const chains: SongPhraseChain[] = activeGroups.map((g, idx) => {
+    let minX = 80;
+    let maxX = 920;
+    if (totalCorridors === 2) {
+      if (idx === 0) {
+        minX = 35;
+        maxX = 295;
+      } else {
+        minX = 335;
+        maxX = 965;
+      }
+    } else if (totalCorridors === 3) {
+      if (idx === 0) {
+        minX = 20;
+        maxX = 280;
+      } else if (idx === 1) {
+        minX = 320;
+        maxX = 680;
+      } else {
+        minX = 720;
+        maxX = 980;
+      }
+    } else if (totalCorridors >= 4) {
+      const span = 880 / totalCorridors;
+      minX = 60 + idx * span;
+      maxX = minX + span - 24;
+    }
 
-  const chains: SongPhraseChain[] = finalGroups.map((g, idx) => ({
-    id: `${g.kind}_${idx}`,
-    trackChannel: `lane_${g.kind}_${idx}`,
-    startX: 90,
-    startY: startYForIndex(idx),
-    maxX: 910,
-    stepX: g.notes.length <= 8 ? 82 : 55,
-    dropPerHit: 6,
-    barLen: g.kind === "bass" ? 50 : 44,
-    defaultInstrument: g.defaultInstrument,
-    notes: g.notes,
-  }));
+    return {
+      id: g.id,
+      trackChannel: `lane_${g.id}`,
+      minX,
+      startX: minX + Math.min(60, (maxX - minX) * 0.25),
+      maxX,
+      startY: 132,
+      stepX: Math.min(105, Math.max(72, (maxX - minX) * 0.34)),
+      dropPerHit: 36,
+      barLen: g.kind === "bass" ? 56 : 54,
+      defaultInstrument: g.defaultInstrument,
+      notes: g.notes,
+    };
+  });
 
   return {
     id: draft.id,

@@ -242,6 +242,8 @@ export const App: React.FC = () => {
         setBpm(w.bpm);
         setScaleId(w.scaleId);
         setIsPlaying(true);
+        setFollowBall(true);
+        followedMarbleIdRef.current = null;
         setShowTip(false);
         syncUi();
       }
@@ -360,6 +362,8 @@ export const App: React.FC = () => {
       rhythmEngine.setBpm(newWorld.bpm);
       setBpm(newWorld.bpm);
       setIsPlaying(true);
+      setFollowBall(true);
+      followedMarbleIdRef.current = null;
       setSelectedId(null);
       setShowHint(false);
       setWinBannerVisible(false);
@@ -588,37 +592,41 @@ export const App: React.FC = () => {
 
         for (const ev of events) {
           if (ev.type === "bar_hit") {
-            const noteName = synthEngine.playBarHit(
-              ev.material,
-              ev.length,
-              world.scaleId,
-              ev.x,
-              ev.speed,
-              eventWhen,
-              {
-                fixedMidi: ev.fixedMidi,
-                instrumentOverride: ev.instrumentOverride,
-                drumOverride: ev.drumOverride,
-                noteLabel: ev.noteLabel,
-              }
-            );
-            const color = MATERIALS[ev.material].color;
+            const color = ev.silentCue
+              ? "rgba(130, 136, 130, 0.7)"
+              : MATERIALS[ev.material].color;
+            if (!ev.silentCue) {
+              const noteName = synthEngine.playBarHit(
+                ev.material,
+                ev.length,
+                world.scaleId,
+                ev.x,
+                ev.speed,
+                eventWhen,
+                {
+                  fixedMidi: ev.fixedMidi,
+                  instrumentOverride: ev.instrumentOverride,
+                  drumOverride: ev.drumOverride,
+                  noteLabel: ev.noteLabel,
+                }
+              );
+              world.popups.push({
+                x: ev.x,
+                y: ev.y - 12,
+                text: noteName,
+                color,
+                age: 0,
+                duration: 0.65,
+              });
+            }
             world.ripples.push({
               x: ev.x,
               y: ev.y,
               color,
               age: 0,
-              duration: 0.48,
-              maxRadius: 34 + Math.min(24, ev.speed * 0.04),
-              doubleRing: ev.material === "brass" || ev.material === "ceramic",
-            });
-            world.popups.push({
-              x: ev.x,
-              y: ev.y - 12,
-              text: noteName,
-              color,
-              age: 0,
-              duration: 0.65,
+              duration: ev.silentCue ? 0.32 : 0.48,
+              maxRadius: ev.silentCue ? 22 : 34 + Math.min(24, ev.speed * 0.04),
+              doubleRing: !ev.silentCue && (ev.material === "brass" || ev.material === "ceramic"),
             });
           } else if (ev.type === "bumper_hit") {
             if (!ev.silentCue) {

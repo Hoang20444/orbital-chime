@@ -232,7 +232,7 @@ export function stepFixed(world: WorldState, isPlaying: boolean): PhysicsEvent[]
                 x: cx,
                 y: cy,
                 speed: impactSpeed,
-                silentCue: wasSilentCue,
+                silentCue: wasSilentCue || bar.silent,
                 fixedMidi: bar.fixedMidi,
                 instrumentOverride: bar.instrumentOverride,
                 drumOverride: bar.drumOverride,
@@ -366,10 +366,16 @@ export function stepFixed(world: WorldState, isPlaying: boolean): PhysicsEvent[]
   }
 
   // Record smooth trail points and prune off-stage marbles
+  const maxBarY = world.bars.reduce(
+    (mx, b) => Math.max(mx, b.ay, b.by),
+    STAGE_H
+  );
+  const cullBottomY = Math.max(STAGE_H + 120, maxBarY + 240);
+
   for (let i = world.marbles.length - 1; i >= 0; i--) {
     const m = world.marbles[i];
     if (
-      m.y > STAGE_H + 120 ||
+      m.y > cullBottomY ||
       m.x < -550 ||
       m.x > STAGE_W + 550 ||
       m.y < -220

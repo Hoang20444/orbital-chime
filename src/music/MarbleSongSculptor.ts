@@ -1,5 +1,9 @@
 import type { MelodicInstrumentId } from "../audio/instruments/types.ts";
-import type { MarbleSongDef, SongPhraseChain } from "../data/marbleSongs.ts";
+import type {
+  MarbleSongDef,
+  SongHitNote,
+  SongPhraseChain,
+} from "../data/marbleSongs.ts";
 import { FIXED_DT, GRAVITY, MARBLE_RADIUS, MAX_SPEED } from "../engine/physics.ts";
 import type { BarPiece, Emitter, WorldState } from "../engine/types.ts";
 import { MATERIALS } from "../theme/tokens.ts";
@@ -13,6 +17,10 @@ interface SimState {
   y: number;
   vx: number;
   vy: number;
+}
+
+interface WaypointNote extends SongHitNote {
+  silent?: boolean;
 }
 
 function clampVel(s: SimState): void {
@@ -65,7 +73,6 @@ function solveExactBounce(
   const totalTime = N * SUB_DT;
   const gravDisp = 0.5 * N * (N + 1) * SUB_DT * SUB_DT * GRAVITY;
 
-  // Iterate 6 times so penetration = 0.65 * (-vn) * SUB_DT AND pushed pos converge to machine precision
   for (let iter = 0; iter < 6; iter++) {
     const vnEstimate = inState.vx * nx + inState.vy * ny;
     penetration = Math.min(0.85, Math.max(0.06, Math.abs(vnEstimate) * SUB_DT * 0.62));
@@ -97,7 +104,7 @@ function solveExactBounce(
       ny = -1;
       restitution = 0.85;
     }
-    restitution = Math.max(0.22, Math.min(4.8, restitution));
+    restitution = Math.max(0.05, Math.min(4.8, restitution));
 
     const vPreNx = inState.vx * nx + inState.vy * ny;
     const rawPostX = inState.vx - (1 + restitution) * vPreNx * nx;
@@ -120,26 +127,91 @@ function solveExactBounce(
   };
 }
 
-function layoutChainX(chain: SongPhraseChain): number[] {
-  const xs: number[] = [];
-  let x = chain.startX;
-  const notes = chain.notes;
-  const totalSpan = Math.max(240, chain.maxX - chain.startX);
+function buildContinuousWaypoints(chain: SongPhraseChain, bpm: number): WaypointNote[] {
+  const maxGapBeats = Math.max(1.0, (0.98 * bpm) / 60);
+  const out: WaypointNote[] = [];
 
-  const rawSteps: number[] = [];
-  for (let i = 0; i < notes.length - 1; i++) {
-    const dt = Math.max(0.25, notes[i + 1].beat - notes[i].beat);
-    const desired = chain.stepX * Math.min(1.65, Math.max(0.96, Math.sqrt(dt * 1.45)));
-    rawSteps.push(desired);
-  }
-  const sumRaw = rawSteps.reduce((a, b) => a + b, 0);
-  const scale = sumRaw > totalSpan ? totalSpan / sumRaw : 1;
-
-  for (let i = 0; i < notes.length; i++) {
-    xs.push(x);
-    if (i < rawSteps.length) {
-      x += Math.max(46, rawSteps[i] * scale);
+  for (let i = 0; i < chain.notes.length; i++) {
+    const curr = chain.notes[i];
+    out.push(curr);
+    if (i < chain.notes.length - 1) {
+      const next = chain.notes[i + 1];
+      const gap = next.beat - curr.beat;
+      if (gap > maxGapBeats) {
+        const segments = Math.ceil(gap / maxGapBeats);
+        for (let s = 1; s < segments; s++) {
+          const midBeat = curr.beat + (gap * s) / segments;
+          out.push({
+            beat: Math.round(midBeat * 100) / 100,
+            material: curr.material,
+            silent: true,
+          });
+        }
+      }
     }
+  }
+  return out;
+}
+
+function layoutZigzagX(
+  chain: SongPhraseChain,
+  waypoints: WaypointNote[],
+  halfLen: number,
+  chainIndex: number
+): number[] {
+  const pad = halfLen + 14;
+  const minBound = (chain.minX ?? Math.min(chain.startX, 90)) + pad * 0.5;
+  const maxBound = Math.max(minBound + 130, chain.maxX - pad * 0.5);
+  const corridorW = maxBound - minBound;
+
+  const minStep = Math.min(corridorW * 0.62, Math.max(halfLen + 44, 78));
+  const baseStep = Math.min(corridorW * 0.72, Math.max(minStep, chain.stepX));
+
+  let x = Math.max(minBound, Math.min(maxBound, chain.startX));
+  let dir = chainIndex % 2 === 0 ? 1 : -1;
+  if (x + dir * minStep * 2 > maxBound) dir = -1;
+  if (x + dir * minStep * 2 < minBound) dir = 1;
+
+  const xs: number[] = [x];
+  let stepsInLeg = 0;
+
+  for (let i = 0; i < waypoints.length - 1; i++) {
+    const dtBeat = Math.max(0.25, waypoints[i + 1].beat - waypoints[i].beat);
+    const scale = Math.min(1.32, Math.max(0.88, Math.sqrt(dtBeat * 1.25)));
+    const desiredDist = Math.max(minStep, Math.min(corridorW * 0.82, baseStep * scale));
+
+    const maxLegNotes = corridorW > 300 ? 4 : 2;
+    const roomAhead = dir > 0 ? maxBound - x : x - minBound;
+
+    const shouldTurn =
+      stepsInLeg >= 2 &&
+      (roomAhead < minStep || stepsInLeg >= maxLegNotes || dtBeat >= 1.0);
+
+    if (shouldTurn) {
+      dir *= -1;
+      stepsInLeg = 0;
+    }
+
+    let nextX = x + dir * desiredDist;
+    if (nextX > maxBound) {
+      dir = -1;
+      stepsInLeg = 0;
+      nextX = Math.max(minBound, x - desiredDist);
+    } else if (nextX < minBound) {
+      dir = 1;
+      stepsInLeg = 0;
+      nextX = Math.min(maxBound, x + desiredDist);
+    }
+
+    if (Math.abs(nextX - x) < minStep) {
+      nextX = x + dir * minStep;
+      if (nextX > maxBound) nextX = x - minStep;
+      if (nextX < minBound) nextX = x + minStep;
+    }
+
+    x = nextX;
+    stepsInLeg++;
+    xs.push(x);
   }
   return xs;
 }
@@ -154,17 +226,25 @@ export function sculptMarbleSong(
 
   const emitters: Emitter[] = [];
   const bars: BarPiece[] = [];
+  const yPerBeat = Math.max(30, song.chains[0]?.dropPerHit ?? 36);
+  const masterTopY = song.chains[0]?.startY ?? 132;
 
-  for (const chain of song.chains) {
+  for (let cIdx = 0; cIdx < song.chains.length; cIdx++) {
+    const chain = song.chains[cIdx];
     if (chain.notes.length === 0) continue;
 
-    const firstNote = chain.notes[0];
+    const waypoints = buildContinuousWaypoints(chain, song.bpm);
+    const barLengthPx = Math.max(48, Math.min(58, chain.barLen || 54));
+    const halfLen = barLengthPx * 0.5;
+    const xs = layoutZigzagX(chain, waypoints, halfLen, cIdx);
+
+    const firstNote = waypoints[0];
     const phaseOffset = Math.max(0, firstNote.beat);
     const emitTick = Math.round(phaseOffset / beatPerTick);
 
-    const xs = layoutChainX(chain);
     const emX = xs[0];
-    const emY = Math.max(44, chain.startY - DROP_HEIGHT);
+    const note0TargetY = masterTopY + firstNote.beat * yPerBeat;
+    const emY = Math.max(44, note0TargetY - DROP_HEIGHT);
 
     emitters.push({
       id: `song_em_${chain.id}`,
@@ -180,18 +260,15 @@ export function sculptMarbleSong(
       pulse: 0,
     });
 
-    // At tick `emitTick`: emitter spawns AND runs SUB_STEPS=2 sub-steps.
-    // Advance (leadInTicks * SUB_STEPS + 2) sub-steps to hitTick0 = emitTick + leadInTicks (on sub-step 1).
     const hitTick0 = emitTick + leadInTicks;
     let curState = stepSubsteps({ x: emX, y: emY, vx: 0, vy: 0 }, leadInTicks * SUB_STEPS + 2);
     let curTick = hitTick0;
 
-    // Precompute compact bar length
-    const compactLen = Math.min(34, Math.max(28, chain.barLen * 0.78));
-    const halfLen = compactLen * 0.5;
+    let musicIdx = 0;
+    let relayIdx = 0;
 
-    for (let i = 0; i < chain.notes.length; i++) {
-      const note = chain.notes[i];
+    for (let i = 0; i < waypoints.length; i++) {
+      const note = waypoints[i];
       const spec = MATERIALS[note.material];
       const minDist = MARBLE_RADIUS + spec.thickness * 0.5;
 
@@ -199,34 +276,53 @@ export function sculptMarbleSong(
       let nextY: number;
       let dtTicks: number;
 
-      if (i < chain.notes.length - 1) {
-        const nextNote = chain.notes[i + 1];
+      if (i < waypoints.length - 1) {
+        const nextNote = waypoints[i + 1];
         const nextTargetTick = Math.round(nextNote.beat / beatPerTick) + leadInTicks;
         dtTicks = Math.max(8, nextTargetTick - curTick);
         nextX = xs[i + 1];
 
         const dtSec = dtTicks * FIXED_DT;
         const arcDropBudget = 0.5 * GRAVITY * dtSec * dtSec;
-        const dx = nextX - xs[i];
-        // Require marble crossing bar i's plane at t_cross only AFTER passing bar i's right tip (+8px buffer)
-        const minCrossFrac = Math.min(0.9, (halfLen + minDist + 8) / Math.max(1, dx));
-        // If parabola is symmetric or drops by deltaY, t_cross = dtSec * (1 - deltaY / arcDropBudget)
-        const maxSafeDy = arcDropBudget * (1 - minCrossFrac);
+        const dxNext = nextX - xs[i];
+        const dxAbs = Math.abs(dxNext);
+        const dxPrev = i > 0 ? xs[i] - xs[i - 1] : dxNext;
+        const isZigzagTurn = i > 0 && dxNext * dxPrev < 0;
 
-        const midiCurr = note.midi ?? 67;
-        const midiNext = nextNote.midi ?? 67;
-        const contour = Math.max(-7, Math.min(7, (midiCurr - midiNext) * 0.9));
-        const desiredDy = Math.min(
-          maxSafeDy,
-          Math.max(-10, contour + Math.min(3.5, chain.dropPerHit * 0.35))
-        );
-        nextY = Math.max(chain.startY - 30, Math.min(635, curState.y + desiredDy));
+        const masterNextY = masterTopY + nextNote.beat * yPerBeat;
+
+        const isNextBarTurn =
+          i + 2 < waypoints.length &&
+          (xs[i + 2] - xs[i + 1]) * dxNext < 0;
+
+        if (isZigzagTurn) {
+          // On a zigzag corner reversal, keep vy_out well below horizontal so the return arc
+          // passes cleanly underneath the upper leg's outer bar tip!
+          const turnDrop = Math.max(
+            74,
+            Math.ceil(arcDropBudget + 28),
+            Math.min(190, masterNextY - curState.y)
+          );
+          nextY = curState.y + turnDrop;
+        } else {
+          // Along a continuous sweep, keep marble clearing current bar tip cleanly before crossing bar plane
+          const minCrossFrac = Math.min(
+            0.9,
+            (halfLen + minDist + 14) / Math.max(1, dxAbs)
+          );
+          const maxSafeDy = Math.max(4, arcDropBudget * (1 - minCrossFrac) * 0.84);
+          // Give pre-turn approach bar extra vertical drop headroom when safe
+          const targetDy = isNextBarTurn
+            ? Math.max(maxSafeDy * 0.85, Math.min(maxSafeDy, 22))
+            : Math.min(maxSafeDy, masterNextY - curState.y);
+          nextY = curState.y + Math.max(4, Math.min(maxSafeDy, targetDy));
+        }
       } else {
-        // Exit smoothly up-and-right while matching incoming vx (keeps normal nearly vertical so marble never skims parallel!)
-        dtTicks = 40;
-        const exitVx = Math.max(145, curState.vx);
+        dtTicks = 44;
+        const dirSign = curState.vx < -10 ? -1 : 1;
+        const exitVx = dirSign * Math.max(185, Math.abs(curState.vx));
         nextX = curState.x + exitVx * (dtTicks * FIXED_DT);
-        nextY = curState.y + 4;
+        nextY = curState.y - 10;
       }
 
       const substeps = dtTicks * SUB_STEPS;
@@ -235,24 +331,30 @@ export function sculptMarbleSong(
       const cx = curState.x - solved.nx * (minDist - solved.penetration);
       const cy = curState.y - solved.ny * (minDist - solved.penetration);
 
-      const resolvedInst: MelodicInstrumentId | undefined = note.drum
-        ? undefined
-        : timbreOverride ?? note.instrument ?? chain.defaultInstrument;
+      const resolvedInst: MelodicInstrumentId | undefined =
+        note.silent || note.drum
+          ? undefined
+          : timbreOverride ?? note.instrument ?? chain.defaultInstrument;
+
+      const barId = note.silent
+        ? `song_${song.id}_${chain.id}_relay_${relayIdx++}`
+        : `song_${song.id}_${chain.id}_${musicIdx++}`;
 
       bars.push({
-        id: `song_${song.id}_${chain.id}_${i}`,
+        id: barId,
         ax: cx - solved.tx * halfLen,
         ay: cy - solved.ty * halfLen,
         bx: cx + solved.tx * halfLen,
         by: cy + solved.ty * halfLen,
         material: note.material,
         locked: false,
-        fixedMidi: note.midi,
+        fixedMidi: note.silent ? undefined : note.midi,
         instrumentOverride: resolvedInst,
-        drumOverride: note.drum,
+        drumOverride: note.silent ? undefined : note.drum,
         customRestitution: solved.restitution,
-        noteLabel: note.label,
+        noteLabel: note.silent ? undefined : note.label,
         trackChannel: chain.trackChannel,
+        silent: note.silent ? true : undefined,
       });
 
       curState = stepSubsteps(

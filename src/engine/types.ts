@@ -45,6 +45,7 @@ export interface BarPiece {
   customRestitution?: number;
   noteLabel?: string;
   trackChannel?: string;
+  silent?: boolean;
   // Transient visual oscillation state
   flexOffset?: number;
   flexVel?: number;

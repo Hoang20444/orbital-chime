@@ -3,7 +3,7 @@ import { midiToName } from "../audio/scales.ts";
 import type { MaterialType, ScaleId } from "../engine/types.ts";
 
 export interface SongHitNote {
-  /** Score beat time relative to bar 0 beat 0 (before lead-in drop shift) */
+  /** Score beat time relative to beat 0 (before lead-in drop shift) */
   beat: number;
   /** Exact MIDI note number for melodic hits */
   midi?: number;
@@ -19,19 +19,21 @@ export interface SongHitNote {
 
 export interface SongPhraseChain {
   id: string;
-  /** Collision lane so cross-tier marbles only strike their own score rails + user-drawn bars */
+  /** Collision lane so parallel balls only strike their own score rails + user-drawn bars */
   trackChannel: string;
-  /** Top Y anchor in world coordinates (0..700) */
+  /** Top Y anchor in world coordinates */
   startY: number;
   /** Starting X coordinate */
   startX: number;
-  /** End X limit before wrapping or exiting */
+  /** Right X corridor bound for zigzag sweeps */
   maxX: number;
-  /** Horizontal travel per step baseline */
+  /** Left X corridor bound for zigzag sweeps */
+  minX?: number;
+  /** Horizontal travel baseline per hop */
   stepX: number;
-  /** Gentle vertical cascade drop bias per hit */
+  /** Gentle vertical cascade drop bias per beat */
   dropPerHit: number;
-  /** Bar visual length range */
+  /** Sculpted bar visual length */
   barLen: number;
   /** Default melodic instrument for this lane */
   defaultInstrument: MelodicInstrumentId;
@@ -87,21 +89,22 @@ export const MARBLE_SONGS: MarbleSongDef[] = [
     titleEn: "Für Elise",
     titleVi: "Für Elise (Beethoven)",
     composer: "L. v. Beethoven",
-    subtitleEn: "Iconic piano right-hand motif + left-hand arpeggio marbles",
-    subtitleVi: "Giai điệu piano bất hủ + bè trầm arpeggio bằng bi lăn",
+    subtitleEn: "Continuous right-hand melody + parallel left-hand arpeggio cascade",
+    subtitleVi: "Giai điệu piano liên hoàn song song bè trầm rơi từ trên xuống dưới",
     bpm: 96,
     scaleId: "a_minor9",
     loopBeats: 24,
     chains: [
       {
-        id: "rh_1",
-        trackChannel: "melody_1",
-        startX: 90,
-        startY: 148,
-        maxX: 910,
-        stepX: 54,
-        dropPerHit: 8,
-        barLen: 42,
+        id: "melody",
+        trackChannel: "melody",
+        minX: 360,
+        startX: 430,
+        maxX: 920,
+        startY: 132,
+        stepX: 98,
+        dropPerHit: 36,
+        barLen: 56,
         defaultInstrument: "piano",
         notes: [
           m(0.0, 76, "ceramic"), // E5
@@ -121,19 +124,6 @@ export const MARBLE_SONGS: MarbleSongDef[] = [
           m(9.0, 68, "brass"),   // G#4
           m(9.5, 71, "ceramic"), // B4
           m(10.0, 72, "ceramic"), // C5
-        ],
-      },
-      {
-        id: "rh_2",
-        trackChannel: "melody_2",
-        startX: 90,
-        startY: 292,
-        maxX: 910,
-        stepX: 54,
-        dropPerHit: 8,
-        barLen: 42,
-        defaultInstrument: "piano",
-        notes: [
           m(11.5, 64, "marimba"), // E4
           m(12.0, 76, "ceramic"), // E5
           m(12.5, 75, "brass"),   // D#5
@@ -155,14 +145,15 @@ export const MARBLE_SONGS: MarbleSongDef[] = [
         ],
       },
       {
-        id: "lh_1",
-        trackChannel: "bass_1",
-        startX: 140,
-        startY: 445,
-        maxX: 900,
-        stepX: 60,
-        dropPerHit: 5,
-        barLen: 50,
+        id: "bass",
+        trackChannel: "bass",
+        minX: 60,
+        startX: 100,
+        maxX: 310,
+        startY: 132,
+        stepX: 90,
+        dropPerHit: 36,
+        barLen: 58,
         defaultInstrument: "piano",
         notes: [
           m(4.0, 45, "bass"), // A2
@@ -174,19 +165,6 @@ export const MARBLE_SONGS: MarbleSongDef[] = [
           m(10.0, 45, "bass"), // A2
           m(10.5, 52, "bass"), // E3
           m(11.0, 57, "bass"), // A3
-        ],
-      },
-      {
-        id: "lh_2",
-        trackChannel: "bass_2",
-        startX: 140,
-        startY: 588,
-        maxX: 900,
-        stepX: 60,
-        dropPerHit: 4,
-        barLen: 50,
-        defaultInstrument: "bass",
-        notes: [
           m(16.0, 45, "bass"), // A2
           m(16.5, 52, "bass"), // E3
           m(17.0, 57, "bass"), // A3
@@ -205,49 +183,37 @@ export const MARBLE_SONGS: MarbleSongDef[] = [
     titleEn: "Havana Groove",
     titleVi: "Havana — Latin Groove",
     composer: "Latin Pop (G Minor)",
-    subtitleEn: "Montuno piano hook + tresillo kick/rim + habanera bass marbles",
-    subtitleVi: "Giai điệu Havana + trống tresillo + bass habanera đồng bộ từng cú nảy",
+    subtitleEn: "Parallel Melody, Tresillo Drums & Habanera Bass cascading together",
+    subtitleVi: "3 quả bóng Giai điệu + Trống Tresillo + Bass rơi song song theo zigzag",
     bpm: 105,
     scaleId: "g_dorian",
     loopBeats: 16,
     chains: [
       {
-        id: "mel_a",
-        trackChannel: "melody_1",
-        startX: 95,
-        startY: 160,
-        maxX: 910,
-        stepX: 62,
-        dropPerHit: 8,
-        barLen: 46,
+        id: "melody",
+        trackChannel: "melody",
+        minX: 320,
+        startX: 365,
+        maxX: 680,
+        startY: 132,
+        stepX: 96,
+        dropPerHit: 38,
+        barLen: 54,
         defaultInstrument: "piano",
         notes: [
-          m(0.0, 67, "marimba"), // G4
-          m(0.5, 70, "ceramic"), // Bb4
-          m(1.0, 70, "ceramic"), // Bb4
-          m(1.5, 67, "marimba"), // G4
-          m(2.0, 67, "marimba"), // G4
-          m(2.5, 62, "marimba"), // D4
-          m(4.0, 67, "marimba"), // G4
-          m(4.5, 69, "marimba"), // A4
-          m(5.0, 70, "ceramic"), // Bb4
-          m(5.5, 74, "brass"),   // D5
-          m(6.0, 72, "ceramic"), // C5
-          m(6.5, 70, "ceramic"), // Bb4
-          m(7.0, 69, "marimba"), // A4
-        ],
-      },
-      {
-        id: "mel_b",
-        trackChannel: "melody_2",
-        startX: 110,
-        startY: 300,
-        maxX: 910,
-        stepX: 64,
-        dropPerHit: 8,
-        barLen: 46,
-        defaultInstrument: "brass",
-        notes: [
+          m(0.0, 67, "marimba"),  // G4
+          m(0.5, 70, "ceramic"),  // Bb4
+          m(1.0, 70, "ceramic"),  // Bb4
+          m(1.5, 67, "marimba"),  // G4
+          m(2.0, 67, "marimba"),  // G4
+          m(2.5, 62, "marimba"),  // D4
+          m(4.0, 67, "marimba"),  // G4
+          m(4.5, 69, "marimba"),  // A4
+          m(5.0, 70, "ceramic"),  // Bb4
+          m(5.5, 74, "brass"),    // D5
+          m(6.0, 72, "ceramic"),  // C5
+          m(6.5, 70, "ceramic"),  // Bb4
+          m(7.0, 69, "marimba"),  // A4
           m(8.0, 69, "marimba"),  // A4
           m(8.5, 70, "ceramic"),  // Bb4
           m(9.0, 69, "marimba"),  // A4
@@ -263,14 +229,15 @@ export const MARBLE_SONGS: MarbleSongDef[] = [
         ],
       },
       {
-        id: "perc_a",
-        trackChannel: "perc_1",
-        startX: 95,
-        startY: 430,
-        maxX: 910,
-        stepX: 62,
-        dropPerHit: 5,
-        barLen: 46,
+        id: "perc",
+        trackChannel: "perc",
+        minX: 720,
+        startX: 750,
+        maxX: 980,
+        startY: 132,
+        stepX: 88,
+        dropPerHit: 38,
+        barLen: 52,
         defaultInstrument: "bass",
         notes: [
           d(0.0, "kick", "bass", "KICK"),
@@ -285,17 +252,29 @@ export const MARBLE_SONGS: MarbleSongDef[] = [
           d(6.0, "snare", "brass", "SNARE"),
           d(7.0, "kick", "bass", "KICK"),
           d(7.5, "hihat_closed", "ceramic", "HAT"),
+          d(8.0, "kick", "bass", "KICK"),
+          d(9.0, "clap", "marimba", "CLAP"),
+          d(9.5, "kick", "bass", "KICK"),
+          d(10.0, "snare", "brass", "SNARE"),
+          d(11.0, "kick", "bass", "KICK"),
+          d(11.5, "shaker", "marimba", "SHK"),
+          d(12.0, "kick", "bass", "KICK"),
+          d(13.0, "clap", "marimba", "CLAP"),
+          d(13.5, "kick", "bass", "KICK"),
+          d(14.0, "snare", "brass", "SNARE"),
+          d(15.0, "kick", "bass", "KICK"),
         ],
       },
       {
-        id: "bass_a",
-        trackChannel: "bass_1",
-        startX: 110,
-        startY: 560,
-        maxX: 910,
-        stepX: 68,
-        dropPerHit: 5,
-        barLen: 52,
+        id: "bass",
+        trackChannel: "bass",
+        minX: 20,
+        startX: 55,
+        maxX: 280,
+        startY: 132,
+        stepX: 88,
+        dropPerHit: 38,
+        barLen: 56,
         defaultInstrument: "bass",
         notes: [
           m(0.0, 43, "bass"),  // G2
@@ -319,21 +298,22 @@ export const MARBLE_SONGS: MarbleSongDef[] = [
     titleEn: "Canon in D",
     titleVi: "Canon in D (Pachelbel)",
     composer: "J. Pachelbel",
-    subtitleEn: "Descending chime melody over the famous 8-note baroque bass ground",
-    subtitleVi: "Giai điệu chuông thanh thoát trên vòng bass baroque 8 nốt kinh điển",
+    subtitleEn: "Continuous baroque chime waterfall + descending 8-note bass ground",
+    subtitleVi: "Thác nhạc chuông Pachelbel chảy liên tục cùng vòng bass 8 nốt song song",
     bpm: 84,
     scaleId: "f_lydian",
     loopBeats: 16,
     chains: [
       {
-        id: "mel_1",
-        trackChannel: "melody_1",
-        startX: 90,
-        startY: 165,
-        maxX: 910,
-        stepX: 56,
-        dropPerHit: 9,
-        barLen: 46,
+        id: "melody",
+        trackChannel: "melody",
+        minX: 360,
+        startX: 430,
+        maxX: 920,
+        startY: 132,
+        stepX: 96,
+        dropPerHit: 38,
+        barLen: 60,
         defaultInstrument: "musicBox",
         notes: [
           m(0.0, 78, "ceramic"), // F#5
@@ -344,19 +324,6 @@ export const MARBLE_SONGS: MarbleSongDef[] = [
           m(5.0, 69, "marimba"), // A4
           m(6.0, 71, "marimba"), // B4
           m(7.0, 73, "brass"),   // C#5
-        ],
-      },
-      {
-        id: "mel_2",
-        trackChannel: "melody_2",
-        startX: 90,
-        startY: 315,
-        maxX: 910,
-        stepX: 56,
-        dropPerHit: 9,
-        barLen: 46,
-        defaultInstrument: "ceramic",
-        notes: [
           m(8.0, 74, "ceramic"), // D5
           m(8.5, 73, "brass"),   // C#5
           m(9.0, 71, "marimba"), // B4
@@ -376,14 +343,15 @@ export const MARBLE_SONGS: MarbleSongDef[] = [
         ],
       },
       {
-        id: "bass_ground",
-        trackChannel: "bass_1",
-        startX: 115,
-        startY: 515,
-        maxX: 905,
-        stepX: 92,
-        dropPerHit: 5,
-        barLen: 56,
+        id: "bass",
+        trackChannel: "bass",
+        minX: 70,
+        startX: 120,
+        maxX: 300,
+        startY: 132,
+        stepX: 86,
+        dropPerHit: 38,
+        barLen: 64,
         defaultInstrument: "bass",
         notes: [
           m(0.0, 50, "bass"),  // D3
@@ -411,21 +379,22 @@ export const MARBLE_SONGS: MarbleSongDef[] = [
     titleEn: "Ode to Joy",
     titleVi: "Ode to Joy (Beethoven)",
     composer: "L. v. Beethoven",
-    subtitleEn: "Triumphant Beethoven theme with resonant bass pillars",
-    subtitleVi: "Giai điệu Giao hưởng số 9 rộn ràng cùng bè trầm đồng bộ",
+    subtitleEn: "Continuous Beethoven cascade with synchronized bass pillars",
+    subtitleVi: "Giai điệu Giao hưởng số 9 nảy zigzag liên tục cùng bè trầm song song",
     bpm: 112,
     scaleId: "c_pentatonic",
     loopBeats: 32,
     chains: [
       {
-        id: "mel_1",
-        trackChannel: "melody_1",
-        startX: 85,
-        startY: 165,
-        maxX: 915,
-        stepX: 56,
-        dropPerHit: 8,
-        barLen: 46,
+        id: "melody",
+        trackChannel: "melody",
+        minX: 360,
+        startX: 430,
+        maxX: 920,
+        startY: 132,
+        stepX: 96,
+        dropPerHit: 34,
+        barLen: 60,
         defaultInstrument: "brass",
         notes: [
           m(0.0, 66, "marimba"), // F#4
@@ -443,19 +412,6 @@ export const MARBLE_SONGS: MarbleSongDef[] = [
           m(12.0, 66, "brass"),   // F#4
           m(13.5, 64, "marimba"), // E4
           m(14.0, 64, "marimba"), // E4
-        ],
-      },
-      {
-        id: "mel_2",
-        trackChannel: "melody_2",
-        startX: 85,
-        startY: 325,
-        maxX: 915,
-        stepX: 56,
-        dropPerHit: 8,
-        barLen: 46,
-        defaultInstrument: "brass",
-        notes: [
           m(16.0, 66, "marimba"), // F#4
           m(17.0, 66, "marimba"), // F#4
           m(18.0, 67, "ceramic"), // G4
@@ -474,23 +430,31 @@ export const MARBLE_SONGS: MarbleSongDef[] = [
         ],
       },
       {
-        id: "bass_1",
-        trackChannel: "bass_1",
-        startX: 115,
-        startY: 525,
-        maxX: 905,
-        stepX: 92,
-        dropPerHit: 5,
-        barLen: 56,
+        id: "bass",
+        trackChannel: "bass",
+        minX: 70,
+        startX: 120,
+        maxX: 300,
+        startY: 132,
+        stepX: 84,
+        dropPerHit: 34,
+        barLen: 64,
         defaultInstrument: "bass",
         notes: [
           m(0.0, 50, "bass"),  // D3
+          m(2.0, 57, "bass"),  // A3
           m(4.0, 45, "bass"),  // A2
+          m(6.0, 52, "bass"),  // E3
           m(8.0, 50, "bass"),  // D3
+          m(10.0, 54, "bass"), // F#3
           m(12.0, 45, "bass"), // A2
+          m(14.0, 52, "bass"), // E3
           m(16.0, 50, "bass"), // D3
+          m(18.0, 57, "bass"), // A3
           m(20.0, 45, "bass"), // A2
+          m(22.0, 52, "bass"), // E3
           m(24.0, 43, "bass"), // G2
+          m(26.0, 50, "bass"), // D3
           m(28.0, 45, "bass"), // A2
           m(30.0, 38, "bass"), // D2
         ],

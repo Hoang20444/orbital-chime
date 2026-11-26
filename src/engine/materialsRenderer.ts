@@ -130,13 +130,37 @@ export function drawOrganicInstrumentBar(
   ctx: CanvasRenderingContext2D,
   bar: Pick<
     BarPiece,
-    "ax" | "ay" | "bx" | "by" | "material" | "locked" | "flexOffset" | "flexVel" | "hitNx" | "hitNy"
+    | "ax"
+    | "ay"
+    | "bx"
+    | "by"
+    | "material"
+    | "locked"
+    | "silent"
+    | "flexOffset"
+    | "flexVel"
+    | "hitNx"
+    | "hitNy"
   >,
   halfThick: number,
   isSelected: boolean,
   isHovered: boolean
 ): void {
-  const pal = BAR_PALETTES[bar.material];
+  const pal: BarMaterialPalette = bar.silent
+    ? {
+        topStop: "#E6E8E1",
+        midStop: "#CFD3C9",
+        botStop: "#B5BAB0",
+        bevelDark: "#8F958A",
+        bevelEdge: "#777D73",
+        border: "#989E93",
+        highlight: "rgba(255, 255, 255, 0.55)",
+        grain: "rgba(110, 116, 108, 0.16)",
+        pinOuter: "#8F958A",
+        pinInner: "#ECEEE8",
+        glow: "rgba(240, 244, 236, 0.45)",
+      }
+    : BAR_PALETTES[bar.material];
   const dx = bar.bx - bar.ax;
   const dy = bar.by - bar.ay;
   const len = Math.hypot(dx, dy);
