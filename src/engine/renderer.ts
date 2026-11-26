@@ -339,6 +339,24 @@ export function renderWorld(
     const isSel = opts.selectedId === bar.id;
     const isHov = opts.hoveredId === bar.id;
 
+    let focusAlpha = 1;
+    if (world.marbles.length > 0 && !isSel && !isHov) {
+      const mx = (bar.ax + bar.bx) * 0.5;
+      const my = (bar.ay + bar.by) * 0.5;
+      let minDist = Infinity;
+      for (const m of world.marbles) {
+        const d = Math.hypot(m.x - mx, m.y - my);
+        if (d < minDist) minDist = d;
+      }
+      if (minDist > 240) {
+        focusAlpha = Math.max(0.76, 1 - ((minDist - 240) / 360) * 0.24);
+      }
+    }
+
+    ctx.save();
+    if (focusAlpha < 1) {
+      ctx.globalAlpha = focusAlpha;
+    }
     drawPhysicalBar(ctx, bar, isSel, isHov);
 
     // Interactive end handles + pitch tag when hovered or selected
@@ -384,6 +402,7 @@ export function renderWorld(
       ctx.textBaseline = "middle";
       ctx.fillText(bar.noteLabel, mx, my);
     }
+    ctx.restore();
   }
 
   // 10. Draft bar while user is actively drawing on canvas
@@ -428,6 +447,40 @@ export function renderWorld(
       ctx.beginPath();
       ctx.arc(rp.x, rp.y, 8 + rp.maxRadius * 0.72 * ease2, 0, Math.PI * 2);
       ctx.stroke();
+    }
+
+    // Crisp warm sunlit studio impact spark
+    if (rp.age < 0.14) {
+      const st = rp.age / 0.14;
+      const sAlpha = Math.pow(1 - st, 1.4);
+      const rayLen = 14 + 4 * Math.sin(st * Math.PI);
+      const rayW = 2.4 * (1 - st * 0.55);
+
+      const flashGrad = ctx.createRadialGradient(rp.x, rp.y, 0, rp.x, rp.y, 18);
+      flashGrad.addColorStop(0, `rgba(255, 248, 224, ${0.85 * sAlpha})`);
+      flashGrad.addColorStop(0.5, `rgba(255, 240, 196, ${0.32 * sAlpha})`);
+      flashGrad.addColorStop(1, "rgba(255, 240, 196, 0)");
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = flashGrad;
+      ctx.beginPath();
+      ctx.arc(rp.x, rp.y, 18, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.globalAlpha = 0.92 * sAlpha;
+      ctx.fillStyle = "rgba(255, 248, 228, 0.95)";
+      for (let i = 0; i < 4; i++) {
+        ctx.save();
+        ctx.translate(rp.x, rp.y);
+        ctx.rotate((i * Math.PI) / 2 + Math.PI / 4);
+        ctx.beginPath();
+        ctx.moveTo(0, -rayLen);
+        ctx.lineTo(rayW, 0);
+        ctx.lineTo(0, rayLen);
+        ctx.lineTo(-rayW, 0);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+      }
     }
     ctx.restore();
   }

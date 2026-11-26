@@ -225,46 +225,21 @@ export function convertDraftToMarbleSong(draft: CustomSongDraft): MarbleSongDef 
     });
   }
 
-  // Assign parallel horizontal zigzag corridors so all marbles fall simultaneously top-to-bottom
-  const totalCorridors = activeGroups.length;
+  // Cross-stage interwoven choreography: all marbles weave across the whole stage
+  // without rigid column walls (trackChannel isolates collisions per lane cleanly).
+  const startXs = [155, 825, 490, 310];
   const chains: SongPhraseChain[] = activeGroups.map((g, idx) => {
-    let minX = 80;
-    let maxX = 920;
-    if (totalCorridors === 2) {
-      if (idx === 0) {
-        minX = 35;
-        maxX = 295;
-      } else {
-        minX = 335;
-        maxX = 965;
-      }
-    } else if (totalCorridors === 3) {
-      if (idx === 0) {
-        minX = 20;
-        maxX = 280;
-      } else if (idx === 1) {
-        minX = 320;
-        maxX = 680;
-      } else {
-        minX = 720;
-        maxX = 980;
-      }
-    } else if (totalCorridors >= 4) {
-      const span = 880 / totalCorridors;
-      minX = 60 + idx * span;
-      maxX = minX + span - 24;
-    }
-
+    const startX = startXs[idx % startXs.length];
     return {
       id: g.id,
       trackChannel: `lane_${g.id}`,
-      minX,
-      startX: minX + Math.min(60, (maxX - minX) * 0.25),
-      maxX,
+      minX: 80,
+      startX,
+      maxX: 920,
       startY: 132,
-      stepX: Math.min(105, Math.max(72, (maxX - minX) * 0.34)),
+      stepX: g.kind === "bass" ? 122 : 110,
       dropPerHit: 36,
-      barLen: g.kind === "bass" ? 56 : 54,
+      barLen: g.kind === "bass" ? 88 : 64,
       defaultInstrument: g.defaultInstrument,
       notes: g.notes,
     };

@@ -186,8 +186,8 @@ export function drawOrganicInstrumentBar(
   const cosA = Math.cos(angle);
   const sinA = Math.sin(angle);
   const elev = isSelected ? 1.2 : 0;
-  const shX = (2.2 + elev) * cosA + (4.6 + elev) * sinA;
-  const shY = -(2.2 + elev) * sinA + (4.6 + elev) * cosA;
+  const shX = (3.2 + elev) * cosA + (6.2 + elev) * sinA;
+  const shY = -(3.2 + elev) * sinA + (6.2 + elev) * cosA;
   const bevX = 2.6 * sinA;
   const bevY = 2.6 * cosA;
 
@@ -195,13 +195,13 @@ export function drawOrganicInstrumentBar(
   ctx.translate(midX, midY);
   ctx.rotate(angle);
 
-  // Layer 1: Soft layered ambient contact shadow
+  // Layer 1: Soft layered 2.5D directional cast shadow
   ctx.save();
   ctx.translate(shX, shY);
-  ctx.fillStyle = "rgba(28, 35, 33, 0.09)";
-  traceOrganicBarPath(ctx, halfLen, halfThick, bendY * 0.85, 1.4);
+  ctx.fillStyle = "rgba(28, 35, 33, 0.075)";
+  traceOrganicBarPath(ctx, halfLen, halfThick, bendY * 0.85, 1.8);
   ctx.fill();
-  ctx.fillStyle = "rgba(28, 35, 33, 0.09)";
+  ctx.fillStyle = "rgba(28, 35, 33, 0.11)";
   traceOrganicBarPath(ctx, halfLen, halfThick, bendY * 0.85, 0.2);
   ctx.fill();
   ctx.restore();

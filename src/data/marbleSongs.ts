@@ -98,13 +98,13 @@ export const MARBLE_SONGS: MarbleSongDef[] = [
       {
         id: "melody",
         trackChannel: "melody",
-        minX: 360,
-        startX: 430,
-        maxX: 920,
+        minX: 85,
+        startX: 170,
+        maxX: 915,
         startY: 132,
-        stepX: 98,
+        stepX: 112,
         dropPerHit: 36,
-        barLen: 56,
+        barLen: 64,
         defaultInstrument: "piano",
         notes: [
           m(0.0, 76, "ceramic"), // E5
@@ -147,13 +147,13 @@ export const MARBLE_SONGS: MarbleSongDef[] = [
       {
         id: "bass",
         trackChannel: "bass",
-        minX: 60,
-        startX: 100,
-        maxX: 310,
+        minX: 85,
+        startX: 810,
+        maxX: 915,
         startY: 132,
-        stepX: 90,
+        stepX: 122,
         dropPerHit: 36,
-        barLen: 58,
+        barLen: 88,
         defaultInstrument: "piano",
         notes: [
           m(4.0, 45, "bass"), // A2
@@ -192,13 +192,13 @@ export const MARBLE_SONGS: MarbleSongDef[] = [
       {
         id: "melody",
         trackChannel: "melody",
-        minX: 320,
-        startX: 365,
-        maxX: 680,
+        minX: 85,
+        startX: 490,
+        maxX: 915,
         startY: 132,
-        stepX: 96,
+        stepX: 108,
         dropPerHit: 38,
-        barLen: 54,
+        barLen: 62,
         defaultInstrument: "piano",
         notes: [
           m(0.0, 67, "marimba"),  // G4
@@ -231,13 +231,13 @@ export const MARBLE_SONGS: MarbleSongDef[] = [
       {
         id: "perc",
         trackChannel: "perc",
-        minX: 720,
-        startX: 750,
-        maxX: 980,
+        minX: 85,
+        startX: 830,
+        maxX: 915,
         startY: 132,
-        stepX: 88,
+        stepX: 108,
         dropPerHit: 38,
-        barLen: 52,
+        barLen: 62,
         defaultInstrument: "bass",
         notes: [
           d(0.0, "kick", "bass", "KICK"),
@@ -268,13 +268,13 @@ export const MARBLE_SONGS: MarbleSongDef[] = [
       {
         id: "bass",
         trackChannel: "bass",
-        minX: 20,
-        startX: 55,
-        maxX: 280,
+        minX: 85,
+        startX: 145,
+        maxX: 915,
         startY: 132,
-        stepX: 88,
+        stepX: 124,
         dropPerHit: 38,
-        barLen: 56,
+        barLen: 92,
         defaultInstrument: "bass",
         notes: [
           m(0.0, 43, "bass"),  // G2
@@ -307,13 +307,13 @@ export const MARBLE_SONGS: MarbleSongDef[] = [
       {
         id: "melody",
         trackChannel: "melody",
-        minX: 360,
-        startX: 430,
-        maxX: 920,
+        minX: 85,
+        startX: 170,
+        maxX: 915,
         startY: 132,
-        stepX: 96,
+        stepX: 112,
         dropPerHit: 38,
-        barLen: 60,
+        barLen: 66,
         defaultInstrument: "musicBox",
         notes: [
           m(0.0, 78, "ceramic"), // F#5
@@ -345,13 +345,13 @@ export const MARBLE_SONGS: MarbleSongDef[] = [
       {
         id: "bass",
         trackChannel: "bass",
-        minX: 70,
-        startX: 120,
-        maxX: 300,
+        minX: 85,
+        startX: 820,
+        maxX: 915,
         startY: 132,
-        stepX: 86,
+        stepX: 120,
         dropPerHit: 38,
-        barLen: 64,
+        barLen: 90,
         defaultInstrument: "bass",
         notes: [
           m(0.0, 50, "bass"),  // D3
@@ -388,13 +388,13 @@ export const MARBLE_SONGS: MarbleSongDef[] = [
       {
         id: "melody",
         trackChannel: "melody",
-        minX: 360,
-        startX: 430,
-        maxX: 920,
+        minX: 85,
+        startX: 170,
+        maxX: 915,
         startY: 132,
-        stepX: 96,
+        stepX: 112,
         dropPerHit: 34,
-        barLen: 60,
+        barLen: 64,
         defaultInstrument: "brass",
         notes: [
           m(0.0, 66, "marimba"), // F#4
@@ -432,13 +432,13 @@ export const MARBLE_SONGS: MarbleSongDef[] = [
       {
         id: "bass",
         trackChannel: "bass",
-        minX: 70,
-        startX: 120,
-        maxX: 300,
+        minX: 85,
+        startX: 820,
+        maxX: 915,
         startY: 132,
-        stepX: 84,
+        stepX: 122,
         dropPerHit: 34,
-        barLen: 64,
+        barLen: 90,
         defaultInstrument: "bass",
         notes: [
           m(0.0, 50, "bass"),  // D3

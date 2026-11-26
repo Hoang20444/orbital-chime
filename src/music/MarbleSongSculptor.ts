@@ -157,7 +157,7 @@ function layoutZigzagX(
   chain: SongPhraseChain,
   waypoints: WaypointNote[],
   halfLen: number,
-  chainIndex: number
+  _chainIndex: number
 ): number[] {
   const pad = halfLen + 14;
   const minBound = (chain.minX ?? Math.min(chain.startX, 90)) + pad * 0.5;
@@ -168,16 +168,16 @@ function layoutZigzagX(
   const baseStep = Math.min(corridorW * 0.72, Math.max(minStep, chain.stepX));
 
   let x = Math.max(minBound, Math.min(maxBound, chain.startX));
-  let dir = chainIndex % 2 === 0 ? 1 : -1;
-  if (x + dir * minStep * 2 > maxBound) dir = -1;
-  if (x + dir * minStep * 2 < minBound) dir = 1;
+  let dir = x > (minBound + maxBound) * 0.5 ? -1 : 1;
+  if (x + dir * minStep * 1.5 > maxBound) dir = -1;
+  if (x + dir * minStep * 1.5 < minBound) dir = 1;
 
   const xs: number[] = [x];
   let stepsInLeg = 0;
 
   for (let i = 0; i < waypoints.length - 1; i++) {
     const dtBeat = Math.max(0.25, waypoints[i + 1].beat - waypoints[i].beat);
-    const scale = Math.min(1.32, Math.max(0.88, Math.sqrt(dtBeat * 1.25)));
+    const scale = Math.min(1.18, Math.max(0.72, Math.sqrt(dtBeat * 1.05)));
     const desiredDist = Math.max(minStep, Math.min(corridorW * 0.82, baseStep * scale));
 
     const maxLegNotes = corridorW > 300 ? 4 : 2;
@@ -234,9 +234,8 @@ export function sculptMarbleSong(
     if (chain.notes.length === 0) continue;
 
     const waypoints = buildContinuousWaypoints(chain, song.bpm);
-    const barLengthPx = Math.max(48, Math.min(58, chain.barLen || 54));
-    const halfLen = barLengthPx * 0.5;
-    const xs = layoutZigzagX(chain, waypoints, halfLen, cIdx);
+    const baseBarLen = Math.max(54, Math.min(96, chain.barLen || 64));
+    const xs = layoutZigzagX(chain, waypoints, baseBarLen * 0.5, cIdx);
 
     const firstNote = waypoints[0];
     const phaseOffset = Math.max(0, firstNote.beat);
@@ -275,6 +274,7 @@ export function sculptMarbleSong(
       let nextX: number;
       let nextY: number;
       let dtTicks: number;
+      let halfLen = baseBarLen * 0.5;
 
       if (i < waypoints.length - 1) {
         const nextNote = waypoints[i + 1];
@@ -290,17 +290,36 @@ export function sculptMarbleSong(
         const isZigzagTurn = i > 0 && dxNext * dxPrev < 0;
 
         const masterNextY = masterTopY + nextNote.beat * yPerBeat;
+        const dtBeat = nextNote.beat - note.beat;
 
+        // Expressive bar length variation by musical duration, material weight & turn anchors
         const isNextBarTurn =
           i + 2 < waypoints.length &&
           (xs[i + 2] - xs[i + 1]) * dxNext < 0;
+
+        const durationBonus = dtBeat >= 1.4 ? 20 : dtBeat >= 0.9 ? 10 : 0;
+        const isFastNote = dtBeat <= 0.6;
+        const roleLen = isFastNote
+          ? Math.min(60, Math.max(52, baseBarLen * 0.85))
+          : note.material === "bass" || note.silent
+            ? Math.max(baseBarLen, 72) + durationBonus * 0.45
+            : baseBarLen + durationBonus + (isZigzagTurn ? 10 : 0);
+        const spanMin = Math.min(dxAbs, Math.abs(dxPrev));
+        const maxSafeLen = isFastNote
+          ? 60
+          : isZigzagTurn
+            ? 78
+            : isNextBarTurn
+              ? Math.min(72, Math.max(52, (spanMin - minDist - 22) * 1.0))
+              : Math.min(88, Math.max(52, (spanMin - minDist - 20) * 1.05));
+        halfLen = Math.min(88, Math.max(52, Math.min(roleLen, maxSafeLen))) * 0.5;
 
         if (isZigzagTurn) {
           // On a zigzag corner reversal, keep vy_out well below horizontal so the return arc
           // passes cleanly underneath the upper leg's outer bar tip!
           const turnDrop = Math.max(
-            74,
-            Math.ceil(arcDropBudget + 28),
+            82,
+            Math.ceil(arcDropBudget + 34),
             Math.min(190, masterNextY - curState.y)
           );
           nextY = curState.y + turnDrop;
@@ -310,7 +329,7 @@ export function sculptMarbleSong(
             0.9,
             (halfLen + minDist + 14) / Math.max(1, dxAbs)
           );
-          const maxSafeDy = Math.max(4, arcDropBudget * (1 - minCrossFrac) * 0.84);
+          const maxSafeDy = Math.min(24, Math.max(4, arcDropBudget * (1 - minCrossFrac) * 0.84));
           // Give pre-turn approach bar extra vertical drop headroom when safe
           const targetDy = isNextBarTurn
             ? Math.max(maxSafeDy * 0.85, Math.min(maxSafeDy, 22))
@@ -318,6 +337,7 @@ export function sculptMarbleSong(
           nextY = curState.y + Math.max(4, Math.min(maxSafeDy, targetDy));
         }
       } else {
+        halfLen = Math.max(baseBarLen, 74) * 0.5;
         dtTicks = 44;
         const dirSign = curState.vx < -10 ? -1 : 1;
         const exitVx = dirSign * Math.max(185, Math.abs(curState.vx));
