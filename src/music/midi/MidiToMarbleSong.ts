@@ -241,9 +241,9 @@ export function convertDraftToMarbleSong(draft: CustomSongDraft): MarbleSongDef 
       startX,
       maxX,
       startY: 132,
-      stepX: Math.round(Math.min(96, Math.max(84, laneW * 0.32))),
-      dropPerHit: 30,
-      barLen: g.kind === "bass" ? 58 : 48,
+      stepX: Math.round(Math.min(74, Math.max(64, laneW * 0.25))),
+      dropPerHit: 22,
+      barLen: g.kind === "bass" ? 48 : 42,
       defaultInstrument: g.defaultInstrument,
       notes: g.notes,
     };

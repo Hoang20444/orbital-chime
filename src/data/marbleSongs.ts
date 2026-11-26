@@ -102,9 +102,9 @@ export const MARBLE_SONGS: MarbleSongDef[] = [
         startX: 110,
         maxX: 465,
         startY: 132,
-        stepX: 82,
-        dropPerHit: 28,
-        barLen: 52,
+        stepX: 68,
+        dropPerHit: 22,
+        barLen: 44,
         defaultInstrument: "piano",
         notes: [
           m(0.0, 76, "ceramic"), // E5
@@ -151,9 +151,9 @@ export const MARBLE_SONGS: MarbleSongDef[] = [
         startX: 590,
         maxX: 945,
         startY: 132,
-        stepX: 84,
-        dropPerHit: 28,
-        barLen: 58,
+        stepX: 70,
+        dropPerHit: 22,
+        barLen: 48,
         defaultInstrument: "piano",
         notes: [
           m(4.0, 45, "bass"), // A2
@@ -196,9 +196,9 @@ export const MARBLE_SONGS: MarbleSongDef[] = [
         startX: 85,
         maxX: 335,
         startY: 132,
-        stepX: 82,
-        dropPerHit: 30,
-        barLen: 50,
+        stepX: 76,
+        dropPerHit: 22,
+        barLen: 42,
         defaultInstrument: "piano",
         notes: [
           m(0.0, 67, "marimba"),  // G4
@@ -235,9 +235,9 @@ export const MARBLE_SONGS: MarbleSongDef[] = [
         startX: 420,
         maxX: 655,
         startY: 132,
-        stepX: 82,
-        dropPerHit: 30,
-        barLen: 50,
+        stepX: 76,
+        dropPerHit: 22,
+        barLen: 42,
         defaultInstrument: "bass",
         notes: [
           d(0.0, "kick", "bass", "KICK"),
@@ -272,9 +272,9 @@ export const MARBLE_SONGS: MarbleSongDef[] = [
         startX: 740,
         maxX: 970,
         startY: 132,
-        stepX: 84,
-        dropPerHit: 30,
-        barLen: 58,
+        stepX: 68,
+        dropPerHit: 22,
+        barLen: 48,
         defaultInstrument: "bass",
         notes: [
           m(0.0, 43, "bass"),  // G2
@@ -311,9 +311,9 @@ export const MARBLE_SONGS: MarbleSongDef[] = [
         startX: 110,
         maxX: 465,
         startY: 132,
-        stepX: 82,
-        dropPerHit: 28,
-        barLen: 52,
+        stepX: 68,
+        dropPerHit: 22,
+        barLen: 44,
         defaultInstrument: "musicBox",
         notes: [
           m(0.0, 78, "ceramic"), // F#5
@@ -349,9 +349,9 @@ export const MARBLE_SONGS: MarbleSongDef[] = [
         startX: 590,
         maxX: 945,
         startY: 132,
-        stepX: 84,
-        dropPerHit: 28,
-        barLen: 58,
+        stepX: 70,
+        dropPerHit: 22,
+        barLen: 48,
         defaultInstrument: "bass",
         notes: [
           m(0.0, 50, "bass"),  // D3
@@ -392,9 +392,9 @@ export const MARBLE_SONGS: MarbleSongDef[] = [
         startX: 110,
         maxX: 465,
         startY: 132,
-        stepX: 82,
-        dropPerHit: 28,
-        barLen: 52,
+        stepX: 68,
+        dropPerHit: 22,
+        barLen: 44,
         defaultInstrument: "brass",
         notes: [
           m(0.0, 66, "marimba"), // F#4
@@ -436,9 +436,9 @@ export const MARBLE_SONGS: MarbleSongDef[] = [
         startX: 590,
         maxX: 945,
         startY: 132,
-        stepX: 84,
-        dropPerHit: 28,
-        barLen: 58,
+        stepX: 70,
+        dropPerHit: 22,
+        barLen: 48,
         defaultInstrument: "bass",
         notes: [
           m(0.0, 50, "bass"),  // D3

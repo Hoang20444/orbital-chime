@@ -10,8 +10,8 @@ import { MATERIALS } from "../theme/tokens.ts";
 
 const SUB_STEPS = 2;
 const SUB_DT = FIXED_DT / SUB_STEPS;
-const DROP_HEIGHT = 56;
-export const SONG_GRAVITY = 460;
+const DROP_HEIGHT = 42;
+export const SONG_GRAVITY = 345;
 
 interface SimState {
   x: number;
@@ -165,8 +165,8 @@ function layoutZigzagX(
   const maxBound = Math.max(minBound + 130, chain.maxX - pad * 0.5);
   const corridorW = maxBound - minBound;
 
-  const minStep = Math.min(corridorW * 0.62, Math.max(halfLen + 46, 76));
-  const baseStep = Math.min(corridorW * 0.74, Math.max(minStep, chain.stepX));
+  const minStep = Math.min(corridorW * 0.58, Math.max(halfLen + 36, 66));
+  const baseStep = Math.min(corridorW * 0.68, Math.max(minStep, chain.stepX));
 
   let x = Math.max(minBound, Math.min(maxBound, chain.startX));
   let dir = x > (minBound + maxBound) * 0.5 ? -1 : 1;
@@ -301,29 +301,29 @@ export function sculptMarbleSong(
         const durationBonus = dtBeat >= 1.4 ? 20 : dtBeat >= 0.9 ? 10 : 0;
         const isFastNote = dtBeat <= 0.6;
         const roleLen = isFastNote
-          ? Math.min(44, Math.max(40, baseBarLen * 0.78))
+          ? Math.min(38, Math.max(34, baseBarLen * 0.75))
           : note.silent
-            ? Math.min(54, Math.max(44, baseBarLen))
+            ? Math.min(46, Math.max(38, baseBarLen))
             : note.material === "bass"
-              ? Math.max(baseBarLen, 56) + durationBonus * 0.35
-              : baseBarLen + durationBonus + (isZigzagTurn ? 8 : 0);
+              ? Math.max(baseBarLen, 48) + durationBonus * 0.3
+              : baseBarLen + durationBonus + (isZigzagTurn ? 6 : 0);
         const spanMin = Math.min(dxAbs, Math.abs(dxPrev));
         const maxSafeLen = isFastNote
-          ? 44
+          ? 38
           : isZigzagTurn
-            ? Math.min(64, Math.max(44, spanMin * 0.7))
+            ? Math.min(54, Math.max(38, spanMin * 0.66))
             : isNextBarTurn
-              ? Math.min(58, Math.max(44, (spanMin - minDist - 22) * 0.9))
-              : Math.min(70, Math.max(44, (spanMin - minDist - 20) * 0.94));
-        halfLen = Math.min(70, Math.max(40, Math.min(roleLen, maxSafeLen))) * 0.5;
+              ? Math.min(48, Math.max(38, (spanMin - minDist - 20) * 0.88))
+              : Math.min(58, Math.max(38, (spanMin - minDist - 18) * 0.92));
+        halfLen = Math.min(58, Math.max(36, Math.min(roleLen, maxSafeLen))) * 0.5;
 
         if (isZigzagTurn) {
           // On a zigzag corner reversal, keep vy_out well below horizontal so the return arc
           // passes cleanly underneath the upper leg's outer bar tip!
           const turnDrop = Math.max(
-            78,
-            Math.ceil(arcDropBudget + 30),
-            Math.min(148, masterNextY - curState.y)
+            72,
+            Math.ceil(arcDropBudget + 28),
+            Math.min(135, masterNextY - curState.y)
           );
           nextY = curState.y + turnDrop;
         } else {
