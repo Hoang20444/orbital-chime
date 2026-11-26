@@ -181,7 +181,7 @@ function layoutZigzagX(
     const scale = Math.min(1.18, Math.max(0.72, Math.sqrt(dtBeat * 1.05)));
     const desiredDist = Math.max(minStep, Math.min(corridorW * 0.82, baseStep * scale));
 
-    const maxLegNotes = corridorW > 300 ? 4 : 2;
+    const maxLegNotes = corridorW > 300 ? 3 : 2;
     const roomAhead = dir > 0 ? maxBound - x : x - minBound;
 
     const shouldTurn =
@@ -333,11 +333,12 @@ export function sculptMarbleSong(
             (halfLen + minDist + 14) / Math.max(1, dxAbs)
           );
           const maxSafeDy = Math.min(24, Math.max(4, arcDropBudget * (1 - minCrossFrac) * 0.84));
-          // Give pre-turn approach bar extra vertical drop headroom when safe
+          // Staircase downward cascade: never flatten consecutive bars into a dead-horizontal line
+          const minCascadeDy = Math.min(maxSafeDy, 13);
           const targetDy = isNextBarTurn
             ? Math.max(maxSafeDy * 0.85, Math.min(maxSafeDy, 22))
-            : Math.min(maxSafeDy, masterNextY - curState.y);
-          nextY = curState.y + Math.max(4, Math.min(maxSafeDy, targetDy));
+            : Math.max(minCascadeDy, Math.min(maxSafeDy, masterNextY - curState.y));
+          nextY = curState.y + Math.max(minCascadeDy, Math.min(maxSafeDy, targetDy));
         }
       } else {
         halfLen = Math.max(baseBarLen, 74) * 0.5;
