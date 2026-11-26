@@ -266,6 +266,18 @@ export function drawOrganicInstrumentBar(
     sheen.addColorStop(1, "rgba(255, 245, 224, 0)");
     ctx.fillStyle = sheen;
     ctx.fillRect(-halfLen - 4, -halfThick * 1.4, (halfLen + 4) * 2, halfThick * 2.8);
+
+    // Subtle futuristic kinetic resonance core slit
+    ctx.strokeStyle =
+      hitGlow > 0.05
+        ? `rgba(116, 232, 248, ${(0.36 + hitGlow * 0.52).toFixed(3)})`
+        : "rgba(96, 198, 218, 0.28)";
+    ctx.lineWidth = 1.6;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(-halfLen * 0.54, bendY * 0.25);
+    ctx.lineTo(halfLen * 0.54, bendY * 0.25);
+    ctx.stroke();
   } else if (bar.material === "brass") {
     // Champagne gold diagonal brushed metallic light streak
     const streak = ctx.createLinearGradient(-halfLen * 0.7, -halfThick, halfLen * 0.6, halfThick);
@@ -276,6 +288,26 @@ export function drawOrganicInstrumentBar(
     streak.addColorStop(1, "rgba(255, 252, 232, 0)");
     ctx.fillStyle = streak;
     ctx.fillRect(-halfLen - 4, -halfThick * 1.5, (halfLen + 4) * 2, halfThick * 3);
+
+    // Futuristic Pulse Segment dividers
+    const segCount = halfLen > 34 ? 3 : 2;
+    for (let s = 1; s < segCount; s++) {
+      const sx = -halfLen * 0.62 + ((halfLen * 1.24) / segCount) * s;
+      ctx.strokeStyle = "rgba(95, 68, 11, 0.34)";
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.moveTo(sx, -halfThick * 0.72);
+      ctx.lineTo(sx, halfThick * 0.72);
+      ctx.stroke();
+      if (hitGlow > 0.05) {
+        ctx.strokeStyle = `rgba(255, 246, 175, ${(hitGlow * 0.85).toFixed(3)})`;
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.moveTo(sx + 1.4, -halfThick * 0.62);
+        ctx.lineTo(sx + 1.4, halfThick * 0.62);
+        ctx.stroke();
+      }
+    }
   } else if (bar.material === "ceramic") {
     // Glazed translucent inner glow + crisp diagonal glass reflection
     const innerGlow = ctx.createRadialGradient(
@@ -300,6 +332,17 @@ export function drawOrganicInstrumentBar(
     ctx.lineTo(-halfLen * 0.18, halfThick * 1.3);
     ctx.closePath();
     ctx.fill();
+
+    // Subtle Echo Structure resonance wire along body
+    ctx.strokeStyle =
+      hitGlow > 0.05
+        ? `rgba(160, 255, 245, ${(0.45 + hitGlow * 0.5).toFixed(3)})`
+        : "rgba(210, 255, 246, 0.42)";
+    ctx.lineWidth = 1.1;
+    ctx.beginPath();
+    ctx.moveTo(-halfLen * 0.58, bendY * 0.3);
+    ctx.quadraticCurveTo(0, halfThick * 0.35 + bendY * 0.4, halfLen * 0.58, bendY * 0.3);
+    ctx.stroke();
   } else if (bar.material === "bass") {
     // Sculpted S-wave surface ridge + satin reflection
     ctx.strokeStyle = pal.grain;
@@ -316,8 +359,12 @@ export function drawOrganicInstrumentBar(
     );
     ctx.stroke();
 
-    ctx.strokeStyle = "rgba(220, 236, 248, 0.22)";
-    ctx.lineWidth = 1.1;
+    // Futuristic electric-blue kinetic accent line
+    ctx.strokeStyle =
+      hitGlow > 0.05
+        ? `rgba(118, 212, 255, ${(0.45 + hitGlow * 0.5).toFixed(3)})`
+        : "rgba(110, 196, 255, 0.32)";
+    ctx.lineWidth = 1.25;
     ctx.beginPath();
     ctx.moveTo(-halfLen * 0.88, -halfThick * 0.34);
     ctx.bezierCurveTo(
@@ -803,10 +850,21 @@ export function drawPremiumMarble(
   ctx.arc(0, 0, r, 0, Math.PI * 2);
   ctx.clip();
 
-  // Subtle ambient studio reflection arc along lower-right rim
+  // Subtle ambient studio reflection arc + cyan kinetic core glow on obsidian marble
+  if (variant === "obsidian") {
+    const coreEnergy = ctx.createRadialGradient(0, 0, 0.4, 0, 0, r * 0.62);
+    coreEnergy.addColorStop(0, "rgba(126, 232, 255, 0.46)");
+    coreEnergy.addColorStop(0.55, "rgba(92, 138, 248, 0.18)");
+    coreEnergy.addColorStop(1, "rgba(92, 138, 248, 0)");
+    ctx.fillStyle = coreEnergy;
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 0.62, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
   ctx.strokeStyle =
     variant === "obsidian"
-      ? "rgba(196, 212, 224, 0.34)"
+      ? "rgba(138, 224, 248, 0.38)"
       : "rgba(255, 255, 255, 0.42)";
   ctx.lineWidth = 1.4;
   ctx.lineCap = "round";

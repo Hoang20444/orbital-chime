@@ -163,6 +163,7 @@ export const App: React.FC = () => {
   const [scaleId, setScaleId] = useState<ScaleId>(LEVELS[0].scaleId);
   const [bpm, setBpm] = useState(LEVELS[0].bpm);
   const [followBall, setFollowBall] = useState(false);
+  const [simSpeed, setSimSpeed] = useState<0.65 | 0.8 | 1>(0.8);
   const [zoomPct, setZoomPct] = useState(100);
   const [, setUiTick] = useState(0);
 
@@ -179,6 +180,8 @@ export const App: React.FC = () => {
     focusY: STAGE_H * 0.5,
   });
   const followBallRef = useRef(followBall);
+  const simSpeedRef = useRef(simSpeed);
+  simSpeedRef.current = simSpeed;
   const followedMarbleIdRef = useRef<number | null>(null);
   const isPlayingRef = useRef(isPlaying);
   const showHintRef = useRef(showHint);
@@ -577,7 +580,7 @@ export const App: React.FC = () => {
     const frameLoop = (now: number) => {
       const rawDt = Math.min(0.05, Math.max(0, (now - lastTime) / 1000));
       lastTime = now;
-      accumulator += rawDt;
+      accumulator += rawDt * simSpeedRef.current;
 
       const world = worldRef.current;
       const baseAudioTime = synthEngine.getCurrentTime();
@@ -718,10 +721,14 @@ export const App: React.FC = () => {
             followedMarbleIdRef.current = target.id;
             const alpha = isPlayingRef.current ? accumulator / FIXED_DT : 1;
             const tx = target.prevX + (target.x - target.prevX) * alpha;
-            const ty = target.prevY + (target.y - target.prevY) * alpha;
-            const k = Math.min(1, rawDt * 12);
-            cam.focusX += (tx - cam.focusX) * k;
-            cam.focusY += (ty - cam.focusY) * k;
+            const ty =
+              target.prevY +
+              (target.y - target.prevY) * alpha +
+              Math.max(-14, Math.min(28, target.vy * 0.06));
+            const kx = Math.min(1, rawDt * 3.0);
+            const ky = Math.min(1, rawDt * 4.2);
+            cam.focusX += (tx - cam.focusX) * kx;
+            cam.focusY += (ty - cam.focusY) * ky;
           } else {
             followedMarbleIdRef.current = null;
             const fallbackX = world.emitters[0]?.x ?? STAGE_W * 0.5;
@@ -1362,6 +1369,26 @@ export const App: React.FC = () => {
             ↻
           </button>
         )}
+
+        <button
+          type="button"
+          onClick={() => {
+            synthEngine.unlock();
+            synthEngine.playUiTick();
+            setSimSpeed((s) => (s === 0.8 ? 0.65 : s === 0.65 ? 1 : 0.8));
+          }}
+          className="hw-btn"
+          style={{
+            padding: "4px 7px",
+            fontSize: 11.5,
+            fontFamily: "var(--font-mono), monospace",
+            fontWeight: 600,
+            color: simSpeed < 1 ? "#1E4B63" : "var(--ink)",
+          }}
+          title={locale === "vi" ? "Tốc độ rơi bóng (0.65x / 0.8x / 1x)" : "Ball speed (0.65x / 0.8x / 1x)"}
+        >
+          {simSpeed === 1 ? "1.0x" : `${simSpeed}x`}
+        </button>
 
         <button
           type="button"
