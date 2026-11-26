@@ -253,8 +253,8 @@ export const App: React.FC = () => {
         setIsPlaying(true);
         setFollowBall(true);
         followedMarbleIdRef.current = null;
-        cameraRef.current = { zoom: 0.78, focusX: STAGE_W * 0.5, focusY: 220 };
-        setZoomPct(78);
+        cameraRef.current = { zoom: 0.66, focusX: STAGE_W * 0.5, focusY: 220 };
+        setZoomPct(66);
         setShowTip(false);
         syncUi();
       }
@@ -375,8 +375,8 @@ export const App: React.FC = () => {
       setIsPlaying(true);
       setFollowBall(true);
       followedMarbleIdRef.current = null;
-      cameraRef.current = { zoom: 0.78, focusX: STAGE_W * 0.5, focusY: 220 };
-      setZoomPct(78);
+      cameraRef.current = { zoom: 0.66, focusX: STAGE_W * 0.5, focusY: 220 };
+      setZoomPct(66);
       setSelectedId(null);
       setShowHint(false);
       setWinBannerVisible(false);

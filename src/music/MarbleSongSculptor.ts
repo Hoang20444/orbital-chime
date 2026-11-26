@@ -10,8 +10,8 @@ import { MATERIALS } from "../theme/tokens.ts";
 
 const SUB_STEPS = 2;
 const SUB_DT = FIXED_DT / SUB_STEPS;
-const DROP_HEIGHT = 42;
-export const SONG_GRAVITY = 345;
+const DROP_HEIGHT = 48;
+export const SONG_GRAVITY = 415;
 
 interface SimState {
   x: number;
@@ -165,7 +165,7 @@ function layoutZigzagX(
   const maxBound = Math.max(minBound + 130, chain.maxX - pad * 0.5);
   const corridorW = maxBound - minBound;
 
-  const minStep = Math.min(corridorW * 0.58, Math.max(halfLen + 36, 66));
+  const minStep = Math.min(corridorW * 0.56, Math.max(halfLen + 40, 78));
   const baseStep = Math.min(corridorW * 0.68, Math.max(minStep, chain.stepX));
 
   let x = Math.max(minBound, Math.min(maxBound, chain.startX));
@@ -301,29 +301,29 @@ export function sculptMarbleSong(
         const durationBonus = dtBeat >= 1.4 ? 20 : dtBeat >= 0.9 ? 10 : 0;
         const isFastNote = dtBeat <= 0.6;
         const roleLen = isFastNote
-          ? Math.min(38, Math.max(34, baseBarLen * 0.75))
+          ? Math.min(50, Math.max(46, baseBarLen * 0.8))
           : note.silent
-            ? Math.min(46, Math.max(38, baseBarLen))
+            ? Math.min(74, Math.max(62, baseBarLen))
             : note.material === "bass"
-              ? Math.max(baseBarLen, 48) + durationBonus * 0.3
-              : baseBarLen + durationBonus + (isZigzagTurn ? 6 : 0);
+              ? Math.max(baseBarLen, 76) + durationBonus * 0.4
+              : baseBarLen + durationBonus + (isZigzagTurn ? 10 : 0);
         const spanMin = Math.min(dxAbs, Math.abs(dxPrev));
         const maxSafeLen = isFastNote
-          ? 38
+          ? Math.min(50, Math.max(46, (spanMin - minDist - 22) * 0.72))
           : isZigzagTurn
-            ? Math.min(54, Math.max(38, spanMin * 0.66))
+            ? Math.min(82, Math.max(58, spanMin * 0.7))
             : isNextBarTurn
-              ? Math.min(48, Math.max(38, (spanMin - minDist - 20) * 0.88))
-              : Math.min(58, Math.max(38, (spanMin - minDist - 18) * 0.92));
-        halfLen = Math.min(58, Math.max(36, Math.min(roleLen, maxSafeLen))) * 0.5;
+              ? Math.min(64, Math.max(50, (spanMin - minDist - 22) * 0.74))
+              : Math.min(90, Math.max(58, (spanMin - minDist - 20) * 0.86));
+        halfLen = Math.min(90, Math.max(52, Math.min(roleLen, maxSafeLen))) * 0.5;
 
         if (isZigzagTurn) {
           // On a zigzag corner reversal, keep vy_out well below horizontal so the return arc
           // passes cleanly underneath the upper leg's outer bar tip!
           const turnDrop = Math.max(
-            72,
-            Math.ceil(arcDropBudget + 28),
-            Math.min(135, masterNextY - curState.y)
+            82,
+            Math.ceil(arcDropBudget + 32),
+            Math.min(155, masterNextY - curState.y)
           );
           nextY = curState.y + turnDrop;
         } else {
@@ -351,6 +351,12 @@ export function sculptMarbleSong(
 
       const substeps = dtTicks * SUB_STEPS;
       const solved = solveExactBounce(curState, nextX, nextY, substeps);
+
+      // Steep/vertical rebound walls (|ny| < 0.72) should stay compact vertically so their upper
+      // tip doesn't intercept the incoming downward arc early; horizontal/sloped bars stay long!
+      if (Math.abs(solved.ny) < 0.72) {
+        halfLen = Math.min(halfLen, 22);
+      }
 
       const cx = curState.x - solved.nx * (minDist - solved.penetration);
       const cy = curState.y - solved.ny * (minDist - solved.penetration);

@@ -227,13 +227,13 @@ export function convertDraftToMarbleSong(draft: CustomSongDraft): MarbleSongDef 
 
   // Separate non-overlapping vertical gravity-zigzag lanes per musical role
   const laneCount = Math.max(1, activeGroups.length);
-  const laneGap = 36;
-  const totalW = 920;
+  const laneGap = 64;
+  const totalW = 1360;
   const laneW = (totalW - laneGap * (laneCount - 1)) / laneCount;
   const chains: SongPhraseChain[] = activeGroups.map((g, idx) => {
-    const minX = Math.round(40 + idx * (laneW + laneGap));
+    const minX = Math.round(-180 + idx * (laneW + laneGap));
     const maxX = Math.round(minX + laneW);
-    const startX = Math.round(minX + Math.min(44, laneW * 0.2));
+    const startX = Math.round(minX + Math.min(68, laneW * 0.18));
     return {
       id: g.id,
       trackChannel: `lane_${g.id}`,
@@ -241,9 +241,9 @@ export function convertDraftToMarbleSong(draft: CustomSongDraft): MarbleSongDef 
       startX,
       maxX,
       startY: 132,
-      stepX: Math.round(Math.min(74, Math.max(64, laneW * 0.25))),
-      dropPerHit: 22,
-      barLen: g.kind === "bass" ? 48 : 42,
+      stepX: Math.round(Math.min(106, Math.max(94, laneW * 0.28))),
+      dropPerHit: 26,
+      barLen: g.kind === "bass" ? 72 : 62,
       defaultInstrument: g.defaultInstrument,
       notes: g.notes,
     };
