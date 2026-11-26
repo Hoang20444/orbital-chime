@@ -1409,7 +1409,7 @@ export const App: React.FC = () => {
             display: "flex",
             alignItems: "center",
             gap: 5,
-            backgroundColor: followBall ? "#1C2321" : "#FFFFFF",
+            background: followBall ? "#1C2321" : "#FFFFFF",
             color: followBall ? "#FFFFFF" : "var(--ink)",
             borderColor: followBall ? "#1C2321" : "var(--border)",
           }}
