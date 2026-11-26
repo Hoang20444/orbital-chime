@@ -32,6 +32,7 @@ import {
   type CameraState,
   type ViewportTransform,
 } from "./engine/renderer.ts";
+import { OrbitalRenderer3D } from "./engine/renderer3d.ts";
 import {
   applyEditableSnapshot,
   cloneEditableSnapshot,
@@ -168,6 +169,11 @@ export const App: React.FC = () => {
   const [, setUiTick] = useState(0);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const canvas3dRef = useRef<HTMLCanvasElement | null>(null);
+  const renderer3dRef = useRef<OrbitalRenderer3D | null>(null);
+  const [is3d, setIs3d] = useState(true);
+  const is3dRef = useRef(is3d);
+  is3dRef.current = is3d;
   const worldRef = useRef<WorldState>(createWorldFromLevel(LEVELS[0], false));
   const undoStackRef = useRef<EditableSnapshot[]>([]);
   const redoStackRef = useRef<EditableSnapshot[]>([]);
@@ -752,53 +758,76 @@ export const App: React.FC = () => {
         );
         vpRef.current = vp;
 
-        const ctx = canvas.getContext("2d");
-        if (ctx) {
-          ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        const interpAlpha = isPlayingRef.current ? accumulator / FIXED_DT : 1;
+        const drag = dragRef.current;
+        const draftBar =
+          drag.kind === "draw_bar"
+            ? {
+                ax: drag.ax,
+                ay: drag.ay,
+                bx: drag.bx,
+                by: drag.by,
+                material: drag.material,
+              }
+            : null;
 
-          const drag = dragRef.current;
-          const draftBar =
-            drag.kind === "draw_bar"
-              ? {
-                  ax: drag.ax,
-                  ay: drag.ay,
-                  bx: drag.bx,
-                  by: drag.by,
-                  material: drag.material,
-                }
-              : null;
+        const showGhost =
+          !isPlayingRef.current || drag.kind !== "none" || selectedIdRef.current !== null;
+        let ghostBranches: ReturnType<typeof simulateGhostPath> = [];
+        if (showGhost) {
+          if (draftBar && barLength(draftBar) >= 48) {
+            world.bars.push({ id: "__draft__", ...draftBar });
+            ghostBranches = simulateGhostPath(world, 175);
+            world.bars.pop();
+          } else {
+            ghostBranches = simulateGhostPath(world, 175);
+          }
+        }
 
-          const showGhost =
-            !isPlayingRef.current || drag.kind !== "none" || selectedIdRef.current !== null;
-          let ghostBranches: ReturnType<typeof simulateGhostPath> = [];
-          if (showGhost) {
-            if (draftBar && barLength(draftBar) >= 48) {
-              world.bars.push({ id: "__draft__", ...draftBar });
-              ghostBranches = simulateGhostPath(world, 175);
-              world.bars.pop();
-            } else {
-              ghostBranches = simulateGhostPath(world, 175);
+        const hintOverlay =
+          modeRef.current === "puzzle" && showHintRef.current
+            ? LEVELS[levelIndexRef.current]?.hintSolution ?? null
+            : null;
+
+        const renderOpts = {
+          mode: modeRef.current,
+          selectedId: selectedIdRef.current,
+          hoveredId: hoveredIdRef.current,
+          showGhost,
+          ghostBranches,
+          hintOverlay,
+          draftBar,
+          interpAlpha,
+          followedMarbleId: followBallRef.current
+            ? followedMarbleIdRef.current
+            : null,
+        };
+
+        if (is3dRef.current && canvas3dRef.current) {
+          if (!renderer3dRef.current) {
+            try {
+              renderer3dRef.current = new OrbitalRenderer3D(canvas3dRef.current);
+            } catch {
+              is3dRef.current = false;
+              setIs3d(false);
             }
           }
-
-          const hintOverlay =
-            modeRef.current === "puzzle" && showHintRef.current
-              ? LEVELS[levelIndexRef.current]?.hintSolution ?? null
-              : null;
-
-          renderWorld(ctx, vp, world, {
-            mode: modeRef.current,
-            selectedId: selectedIdRef.current,
-            hoveredId: hoveredIdRef.current,
-            showGhost,
-            ghostBranches,
-            hintOverlay,
-            draftBar,
-            interpAlpha: isPlayingRef.current ? accumulator / FIXED_DT : 1,
-            followedMarbleId: followBallRef.current
-              ? followedMarbleIdRef.current
-              : null,
-          });
+          const r3d = renderer3dRef.current;
+          if (r3d) {
+            r3d.resize(rect.width, rect.height);
+            r3d.render(world, cam, interpAlpha, selectedIdRef.current);
+            const ctx = canvas.getContext("2d");
+            if (ctx) {
+              ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+              r3d.renderOverlay(ctx, rect.width, rect.height, world, renderOpts);
+            }
+          }
+        } else {
+          const ctx = canvas.getContext("2d");
+          if (ctx) {
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            renderWorld(ctx, vp, world, renderOpts);
+          }
         }
       }
 
@@ -866,7 +895,10 @@ export const App: React.FC = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const rect = canvas.getBoundingClientRect();
-    const pt = screenToWorld(vpRef.current, e.clientX - rect.left, e.clientY - rect.top);
+    const pt =
+      (is3dRef.current && renderer3dRef.current
+        ? renderer3dRef.current.screenToStage(e.clientX, e.clientY, rect)
+        : null) ?? screenToWorld(vpRef.current, e.clientX - rect.left, e.clientY - rect.top);
 
     // Clicking a marble while Follow mode is active locks camera onto that marble
     if (followBallRef.current && e.button === 0) {
@@ -1004,7 +1036,10 @@ export const App: React.FC = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const rect = canvas.getBoundingClientRect();
-    const pt = screenToWorld(vpRef.current, e.clientX - rect.left, e.clientY - rect.top);
+    const pt =
+      (is3dRef.current && renderer3dRef.current
+        ? renderer3dRef.current.screenToStage(e.clientX, e.clientY, rect)
+        : null) ?? screenToWorld(vpRef.current, e.clientX - rect.left, e.clientY - rect.top);
     const clamped = clampToWorkspace(pt.x, pt.y, vpRef.current, mode);
     const drag = dragRef.current;
 
@@ -1291,6 +1326,18 @@ export const App: React.FC = () => {
       )}
 
       <canvas
+        ref={canvas3dRef}
+        style={{
+          position: "absolute",
+          inset: 0,
+          width: "100%",
+          height: "100%",
+          display: is3d ? "block" : "none",
+          pointerEvents: "none",
+        }}
+      />
+
+      <canvas
         ref={canvasRef}
         onContextMenu={(e) => e.preventDefault()}
         onWheel={handleCanvasWheel}
@@ -1299,6 +1346,7 @@ export const App: React.FC = () => {
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerUp}
         style={{
+          position: "relative",
           width: "100%",
           height: "100%",
           display: "block",
@@ -1324,6 +1372,28 @@ export const App: React.FC = () => {
           boxShadow: "0 4px 14px rgba(28, 35, 33, 0.08)",
         }}
       >
+        <button
+          type="button"
+          onClick={() => {
+            synthEngine.unlock();
+            synthEngine.playUiTick();
+            setIs3d((v) => !v);
+          }}
+          className={`hw-btn ${is3d ? "is-selected" : ""}`}
+          style={{
+            padding: "4px 8px",
+            fontSize: 11.5,
+            fontFamily: "var(--font-mono), monospace",
+            fontWeight: 700,
+            backgroundColor: is3d ? "#1E4B63" : "#FFFFFF",
+            color: is3d ? "#FFFFFF" : "var(--ink)",
+            borderColor: is3d ? "#1E4B63" : "var(--border)",
+          }}
+          title={locale === "vi" ? "Chuyển chế độ 3D / 2D" : "Toggle 3D / 2D view"}
+        >
+          {is3d ? "3D" : "2D"}
+        </button>
+
         <button
           type="button"
           onClick={() => {
