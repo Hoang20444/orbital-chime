@@ -163,7 +163,7 @@ export const App: React.FC = () => {
   const [scaleId, setScaleId] = useState<ScaleId>(LEVELS[0].scaleId);
   const [bpm, setBpm] = useState(LEVELS[0].bpm);
   const [followBall, setFollowBall] = useState(false);
-  const [simSpeed, setSimSpeed] = useState<0.65 | 0.8 | 1>(0.8);
+  const [simSpeed, setSimSpeed] = useState<0.65 | 0.8 | 1>(1);
   const [zoomPct, setZoomPct] = useState(100);
   const [, setUiTick] = useState(0);
 

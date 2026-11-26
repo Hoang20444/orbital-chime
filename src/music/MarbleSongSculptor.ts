@@ -164,8 +164,8 @@ function layoutZigzagX(
   const maxBound = Math.max(minBound + 130, chain.maxX - pad * 0.5);
   const corridorW = maxBound - minBound;
 
-  const minStep = Math.min(corridorW * 0.62, Math.max(halfLen + 44, 78));
-  const baseStep = Math.min(corridorW * 0.72, Math.max(minStep, chain.stepX));
+  const minStep = Math.min(corridorW * 0.62, Math.max(halfLen + 46, 76));
+  const baseStep = Math.min(corridorW * 0.74, Math.max(minStep, chain.stepX));
 
   let x = Math.max(minBound, Math.min(maxBound, chain.startX));
   let dir = x > (minBound + maxBound) * 0.5 ? -1 : 1;
@@ -300,19 +300,19 @@ export function sculptMarbleSong(
         const durationBonus = dtBeat >= 1.4 ? 20 : dtBeat >= 0.9 ? 10 : 0;
         const isFastNote = dtBeat <= 0.6;
         const roleLen = isFastNote
-          ? Math.min(60, Math.max(52, baseBarLen * 0.85))
+          ? Math.min(54, Math.max(46, baseBarLen * 0.85))
           : note.material === "bass" || note.silent
-            ? Math.max(baseBarLen, 72) + durationBonus * 0.45
-            : baseBarLen + durationBonus + (isZigzagTurn ? 10 : 0);
+            ? Math.max(baseBarLen, 62) + durationBonus * 0.4
+            : baseBarLen + durationBonus + (isZigzagTurn ? 8 : 0);
         const spanMin = Math.min(dxAbs, Math.abs(dxPrev));
         const maxSafeLen = isFastNote
-          ? 60
+          ? 54
           : isZigzagTurn
-            ? 78
+            ? Math.min(72, Math.max(46, spanMin * 0.75))
             : isNextBarTurn
-              ? Math.min(72, Math.max(52, (spanMin - minDist - 22) * 1.0))
-              : Math.min(88, Math.max(52, (spanMin - minDist - 20) * 1.05));
-        halfLen = Math.min(88, Math.max(52, Math.min(roleLen, maxSafeLen))) * 0.5;
+              ? Math.min(64, Math.max(46, (spanMin - minDist - 22) * 0.95))
+              : Math.min(78, Math.max(46, (spanMin - minDist - 20) * 1.0));
+        halfLen = Math.min(78, Math.max(46, Math.min(roleLen, maxSafeLen))) * 0.5;
 
         if (isZigzagTurn) {
           // On a zigzag corner reversal, keep vy_out well below horizontal so the return arc

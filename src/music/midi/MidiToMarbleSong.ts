@@ -225,21 +225,25 @@ export function convertDraftToMarbleSong(draft: CustomSongDraft): MarbleSongDef 
     });
   }
 
-  // Cross-stage interwoven choreography: all marbles weave across the whole stage
-  // without rigid column walls (trackChannel isolates collisions per lane cleanly).
-  const startXs = [155, 825, 490, 310];
+  // Separate non-overlapping vertical gravity-zigzag lanes per musical role
+  const laneCount = Math.max(1, activeGroups.length);
+  const laneGap = 36;
+  const totalW = 920;
+  const laneW = (totalW - laneGap * (laneCount - 1)) / laneCount;
   const chains: SongPhraseChain[] = activeGroups.map((g, idx) => {
-    const startX = startXs[idx % startXs.length];
+    const minX = Math.round(40 + idx * (laneW + laneGap));
+    const maxX = Math.round(minX + laneW);
+    const startX = Math.round(minX + Math.min(44, laneW * 0.2));
     return {
       id: g.id,
       trackChannel: `lane_${g.id}`,
-      minX: 80,
+      minX,
       startX,
-      maxX: 920,
+      maxX,
       startY: 132,
-      stepX: g.kind === "bass" ? 122 : 110,
-      dropPerHit: 36,
-      barLen: g.kind === "bass" ? 88 : 64,
+      stepX: Math.round(Math.min(96, Math.max(84, laneW * 0.32))),
+      dropPerHit: 30,
+      barLen: g.kind === "bass" ? 58 : 48,
       defaultInstrument: g.defaultInstrument,
       notes: g.notes,
     };
