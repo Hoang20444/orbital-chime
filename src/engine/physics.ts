@@ -1,6 +1,7 @@
 import { MATERIALS, STAGE_H, STAGE_W } from "../theme/tokens.ts";
 import {
   buildRailGeometry,
+  computeDualRailSupportHeight,
   projectPointOntoRail,
   type RailGeometry,
 } from "./railGeometry.ts";
@@ -59,92 +60,125 @@ function clampSpeed(m: Marble): void {
 }
 
 /**
- * Resolves continuous capsule-wall containment and momentum-preserving gliding inside a Transfer Rail.
+ * Resolves continuous upper-surface rolling contact against the twin front/back cylindrical
+ * support rods so the marble visibly rests ON TOP of both rails and never enters between them.
  */
-function resolveMarbleInRail(
+function resolveMarbleOnDualRail(
   body: { x: number; y: number; vx: number; vy: number; radius: number },
   rail: TransferRailPiece,
   geom: RailGeometry,
   dt: number
-): { inChannel: boolean; t: number; hitPoint?: Vec2 } {
-  const pad = body.radius + geom.wallThickness + 16;
+): { onRail: boolean; t: number; hitPoint?: Vec2 } {
+  const pad = body.radius + geom.supportHeight + 16;
   if (
     body.x < geom.bounds.minX - pad ||
     body.x > geom.bounds.maxX + pad ||
     body.y < geom.bounds.minY - pad ||
     body.y > geom.bounds.maxY + pad
   ) {
-    return { inChannel: false, t: 0 };
+    return { onRail: false, t: 0 };
   }
 
-  const minDist = body.radius + geom.wallThickness * 0.5;
-  const minDistSq = minDist * minDist;
+  const supportH = computeDualRailSupportHeight(
+    body.radius,
+    geom.rodRadius,
+    geom.railSpacing
+  );
+  const solidR = body.radius + geom.rodRadius;
   let hitPoint: Vec2 | undefined;
-  let maxImpact = 22;
+  let maxImpact = 38;
 
-  // Two passes stabilize corner & double-wall containment cleanly at all speeds
+  // Two micro-passes guarantee zero penetration & zero facet jitter on curved V transitions
   for (let pass = 0; pass < 2; pass++) {
-    for (const rod of [geom.outerWall, geom.innerWall]) {
-      for (let i = 0; i < rod.length - 1; i++) {
-        const a = rod[i];
-        const b = rod[i + 1];
-        const { cx, cy } = closestPointOnSegment(body.x, body.y, a.x, a.y, b.x, b.y);
-        const dx = body.x - cx;
-        const dy = body.y - cy;
-        const d2 = dx * dx + dy * dy;
-        if (d2 < minDistSq) {
-          const d = Math.sqrt(d2);
-          let nx = 0;
-          let ny = -1;
-          if (d > 1e-5) {
-            nx = dx / d;
-            ny = dy / d;
-          } else {
-            const wdx = b.x - a.x;
-            const wdy = b.y - a.y;
-            const wl = Math.hypot(wdx, wdy) || 1;
-            nx = -wdy / wl;
-            ny = wdx / wl;
-          }
-          const overlap = minDist - d;
-          body.x += nx * overlap;
-          body.y += ny * overlap;
+    const proj = projectPointOntoRail(geom, body.x, body.y);
+    const pastExit =
+      proj.t >= 0.999 &&
+      (body.x - geom.exitPoint.x) * geom.exitTangent.x +
+        (body.y - geom.exitPoint.y) * geom.exitTangent.y >
+        0;
+    const beforeEntry =
+      proj.t <= 0.001 &&
+      (body.x - geom.entryPoint.x) * geom.entryTangent.x +
+        (body.y - geom.entryPoint.y) * geom.entryTangent.y <
+        0;
 
-          const vn = body.vx * nx + body.vy * ny;
-          if (vn < 0) {
-            const impact = -vn;
-            if (impact > maxImpact) {
-              maxImpact = impact;
-              hitPoint = { x: cx, y: cy };
-            }
-            // Low normal restitution prevents bouncing/chatter while gliding along the rods
-            const wallRestitution = 0.12;
-            body.vx -= (1 + wallRestitution) * vn * nx;
-            body.vy -= (1 + wallRestitution) * vn * ny;
-            // Subtle rolling friction preserving natural momentum
-            body.vx *= 0.9992;
-            body.vy *= 0.9992;
+    if (!pastExit && !beforeEntry) {
+      if (proj.signedUpDist >= -geom.rodRadius * 0.35 && proj.signedUpDist < supportH) {
+        // Upper Dual-Support Saddle: seat strictly ON TOP of both front and back rods
+        const overlap = supportH - proj.signedUpDist;
+        body.x += proj.upNormal.x * overlap;
+        body.y += proj.upNormal.y * overlap;
+
+        const vn = body.vx * proj.upNormal.x + body.vy * proj.upNormal.y;
+        if (vn < 0) {
+          const imp = -vn;
+          if (imp > maxImpact) {
+            maxImpact = imp;
+            hitPoint = proj.closest;
           }
+          const restitution = imp > 280 ? 0.04 : 0;
+          body.vx -= (1 + restitution) * vn * proj.upNormal.x;
+          body.vy -= (1 + restitution) * vn * proj.upNormal.y;
+        }
+
+        // Dual-rod wedge rolling resistance proportional to contact normal geometry
+        const wedge = solidR / Math.max(4, supportH);
+        const damp = Math.max(0.9978, 1 - 0.00032 * wedge);
+        body.vx *= damp;
+        body.vy *= damp;
+      } else if (
+        proj.signedUpDist < -geom.rodRadius * 0.35 &&
+        Math.abs(proj.signedUpDist) < solidR
+      ) {
+        // Solid underside deflection so marbles from below bounce off cleanly
+        const overlap = solidR - Math.abs(proj.signedUpDist);
+        body.x -= proj.upNormal.x * overlap;
+        body.y -= proj.upNormal.y * overlap;
+        const vn = body.vx * proj.upNormal.x + body.vy * proj.upNormal.y;
+        if (vn > 0) {
+          const restitution = 0.3;
+          body.vx -= (1 + restitution) * vn * proj.upNormal.x;
+          body.vy -= (1 + restitution) * vn * proj.upNormal.y;
+        }
+      }
+    } else if (!pastExit) {
+      // Rounded endpoint cap smooth catch/transition
+      const capR = proj.signedUpDist >= 0 ? supportH : solidR;
+      if (proj.dist < capR && proj.dist > 1e-5) {
+        const nx = (body.x - proj.closest.x) / proj.dist;
+        const ny = (body.y - proj.closest.y) / proj.dist;
+        const overlap = capR - proj.dist;
+        body.x += nx * overlap;
+        body.y += ny * overlap;
+        const vn = body.vx * nx + body.vy * ny;
+        if (vn < 0) {
+          const restitution = proj.signedUpDist >= 0 ? 0.02 : 0.25;
+          body.vx -= (1 + restitution) * vn * nx;
+          body.vy -= (1 + restitution) * vn * ny;
         }
       }
     }
   }
 
-  const proj = projectPointOntoRail(geom, body.x, body.y);
-  const inChannel = proj.dist <= geom.halfChannel + 5 && proj.t > 0.025 && proj.t < 0.975;
+  const finalProj = projectPointOntoRail(geom, body.x, body.y);
+  const onRail =
+    finalProj.t > 0.01 &&
+    finalProj.t < 0.99 &&
+    finalProj.signedUpDist >= supportH - 1.5 &&
+    finalProj.signedUpDist <= supportH + 3.2;
 
-  if (inChannel && rail.boost > 0) {
-    const vDotT = body.vx * proj.tangent.x + body.vy * proj.tangent.y;
+  if (onRail && rail.boost > 0) {
+    const vDotT = body.vx * finalProj.tangent.x + body.vy * finalProj.tangent.y;
     const dir = Math.abs(vDotT) < 18 ? 1 : vDotT >= 0 ? 1 : -1;
     const speedAlong = vDotT * dir;
-    if (speedAlong < 460) {
-      const accel = rail.boost * 760 * dt;
-      body.vx += proj.tangent.x * dir * accel;
-      body.vy += proj.tangent.y * dir * accel;
+    if (speedAlong < 440) {
+      const accel = rail.boost * 520 * dt;
+      body.vx += finalProj.tangent.x * dir * accel;
+      body.vy += finalProj.tangent.y * dir * accel;
     }
   }
 
-  return { inChannel, t: proj.t, hitPoint };
+  return { onRail, t: finalProj.t, hitPoint };
 }
 
 export function stepFixed(world: WorldState, isPlaying: boolean): PhysicsEvent[] {
@@ -402,16 +436,16 @@ export function stepFixed(world: WorldState, isPlaying: boolean): PhysicsEvent[]
         }
       }
 
-      // 2.5. Continuous Curved Transfer Rails (V-Rail guide containment)
+      // 2.5. Curved Dual-Support Rails (marble rolls smoothly ON TOP of both rails)
       for (const { rail, geom } of railGeoms) {
-        const res = resolveMarbleInRail(m, rail, geom, subDt);
+        const res = resolveMarbleOnDualRail(m, rail, geom, subDt);
         clampSpeed(m);
         if (res.hitPoint) {
           rail.hitFlash = 1;
           rail.hitX = res.hitPoint.x;
           rail.hitY = res.hitPoint.y;
         }
-        if (res.inChannel) {
+        if (res.onRail) {
           if (m.activeRailId !== rail.id) {
             m.activeRailId = rail.id;
             m.activeRailT = res.t;
@@ -676,7 +710,7 @@ export function simulateGhostPath(
         }
 
         for (const { rail, geom } of ghostRails) {
-          resolveMarbleInRail(
+          resolveMarbleOnDualRail(
             {
               get x() {
                 return orb.x;

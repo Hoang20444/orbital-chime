@@ -37,7 +37,7 @@ export const RailInspectorPill: React.FC<RailInspectorPillProps> = ({
       }}
     >
       <span style={{ fontWeight: 700, color: "#38E2FF", letterSpacing: "0.02em" }}>
-        Twin Rail
+        {locale === "vi" ? "Ray đỡ kép" : "Dual Rail"}
       </span>
 
       <div style={{ display: "flex", gap: 4 }}>
@@ -82,7 +82,7 @@ export const RailInspectorPill: React.FC<RailInspectorPillProps> = ({
           onChange={(e) =>
             onUpdateRail({ rotation: (Number(e.target.value) * Math.PI) / 180 })
           }
-          style={{ width: 56, accentColor: "#38E2FF" }}
+          style={{ width: 54, accentColor: "#38E2FF" }}
         />
         <span style={{ width: 30, fontFamily: "var(--font-mono)", fontSize: 10.5 }}>
           {rotDeg}°
@@ -98,19 +98,32 @@ export const RailInspectorPill: React.FC<RailInspectorPillProps> = ({
           step={5}
           value={Math.round(rail.armLength)}
           onChange={(e) => onUpdateRail({ armLength: Number(e.target.value) })}
-          style={{ width: 52, accentColor: "#38E2FF" }}
+          style={{ width: 48, accentColor: "#38E2FF" }}
         />
       </label>
 
       <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
-        <span style={{ opacity: 0.8 }}>{locale === "vi" ? "Khe" : "Gap"}</span>
+        <span style={{ opacity: 0.8 }}>{locale === "vi" ? "Độ rộng" : "Spacing"}</span>
         <input
           type="range"
-          min={20}
-          max={36}
-          step={1}
-          value={Math.round(rail.channelWidth)}
-          onChange={(e) => onUpdateRail({ channelWidth: Number(e.target.value) })}
+          min={9}
+          max={14.5}
+          step={0.5}
+          value={Number((rail.railSpacing || 12.8).toFixed(1))}
+          onChange={(e) => onUpdateRail({ railSpacing: Number(e.target.value) })}
+          style={{ width: 46, accentColor: "#38E2FF" }}
+        />
+      </label>
+
+      <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
+        <span style={{ opacity: 0.8 }}>{locale === "vi" ? "Cầu nối" : "Bridges"}</span>
+        <input
+          type="range"
+          min={28}
+          max={96}
+          step={4}
+          value={Math.round(rail.bridgeSpacing || 52)}
+          onChange={(e) => onUpdateRail({ bridgeSpacing: Number(e.target.value) })}
           style={{ width: 46, accentColor: "#38E2FF" }}
         />
       </label>
@@ -126,7 +139,7 @@ export const RailInspectorPill: React.FC<RailInspectorPillProps> = ({
               step={2}
               value={Math.round(rail.openingAngle)}
               onChange={(e) => onUpdateRail({ openingAngle: Number(e.target.value) })}
-              style={{ width: 48, accentColor: "#38E2FF" }}
+              style={{ width: 46, accentColor: "#38E2FF" }}
             />
           </label>
 
@@ -139,7 +152,7 @@ export const RailInspectorPill: React.FC<RailInspectorPillProps> = ({
               step={5}
               value={Math.round(rail.curvature * 100)}
               onChange={(e) => onUpdateRail({ curvature: Number(e.target.value) / 100 })}
-              style={{ width: 44, accentColor: "#38E2FF" }}
+              style={{ width: 42, accentColor: "#38E2FF" }}
             />
           </label>
         </>
@@ -154,7 +167,7 @@ export const RailInspectorPill: React.FC<RailInspectorPillProps> = ({
           step={5}
           value={Math.round(rail.boost * 100)}
           onChange={(e) => onUpdateRail({ boost: Number(e.target.value) / 100 })}
-          style={{ width: 44, accentColor: "#38E2FF" }}
+          style={{ width: 42, accentColor: "#38E2FF" }}
         />
       </label>
 

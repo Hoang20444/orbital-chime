@@ -14,7 +14,7 @@ export type ScaleId =
 
 export type ToolType = MaterialType | "bumper" | "splitter" | "emitter" | "rail";
 
-export type RailVariant = "straight" | "v" | "u" | "s" | "launch";
+export type RailVariant = "straight" | "v" | "u" | "s" | "custom";
 
 export interface TransferRailPiece {
   id: string;
@@ -26,7 +26,8 @@ export interface TransferRailPiece {
   openingAngle: number; // degrees (50..140)
   curvature: number; // 0.25..0.85 fraction of armLength used for smooth rounded bottom
   slopeBias: number; // -0.4..0.4 asymmetric tilt/elevation between entry & exit arms
-  channelWidth: number; // interior track width in px (default 25)
+  railSpacing: number; // 3D front-to-back depth separation in px (9..14.5, default 12.8)
+  bridgeSpacing: number; // arc-length spacing between support bridges in px (28..96, default 52)
   boost: number; // 0..1 optional momentum-assist along track
   flipped?: boolean;
   locked?: boolean;

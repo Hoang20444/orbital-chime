@@ -78,32 +78,38 @@ const PhysicsGlyph: React.FC<{ tool: ToolType }> = ({ tool }) => {
   if (tool === "rail") {
     return (
       <svg
-        width="16"
-        height="13"
-        viewBox="0 0 16 13"
+        width="17"
+        height="14"
+        viewBox="0 0 17 14"
         style={{ display: "inline-block", verticalAlign: "middle" }}
       >
+        {/* Bridge ticks connecting front/back support rails */}
+        <line x1="4.5" y1="6.8" x2="4.5" y2="10.2" stroke="#6F7B88" strokeWidth="1.6" strokeLinecap="round" />
+        <line x1="12.5" y1="6.8" x2="12.5" y2="10.2" stroke="#6F7B88" strokeWidth="1.6" strokeLinecap="round" />
+        {/* Dual depth-separated curved metallic rails */}
         <path
-          d="M1.5 2 Q8 9.2 14.5 2"
+          d="M1.5 6 Q8.5 11.5 15.5 6"
+          fill="none"
+          stroke="#46525E"
+          strokeWidth="2.1"
+          strokeLinecap="round"
+        />
+        <path
+          d="M1.5 8 Q8.5 13.5 15.5 8"
           fill="none"
           stroke="#1C232B"
           strokeWidth="2.2"
           strokeLinecap="round"
         />
         <path
-          d="M1.5 5.8 Q8 13 14.5 5.8"
-          fill="none"
-          stroke="#1C232B"
-          strokeWidth="2.2"
-          strokeLinecap="round"
-        />
-        <path
-          d="M1.5 2 Q8 9.2 14.5 2 M1.5 5.8 Q8 13 14.5 5.8"
+          d="M1.5 7.4 Q8.5 12.9 15.5 7.4"
           fill="none"
           stroke="#38E2FF"
-          strokeWidth="0.7"
+          strokeWidth="0.65"
           strokeLinecap="round"
         />
+        {/* Marble resting visibly ON TOP of both rails */}
+        <circle cx="8.5" cy="4.2" r="2.7" fill="#182028" stroke="#8CEBFF" strokeWidth="0.8" />
       </svg>
     );
   }

@@ -60,7 +60,8 @@ export function cloneEditableSnapshot(world: WorldState): EditableSnapshot {
       openingAngle: r.openingAngle,
       curvature: r.curvature,
       slopeBias: r.slopeBias,
-      channelWidth: r.channelWidth,
+      railSpacing: r.railSpacing,
+      bridgeSpacing: r.bridgeSpacing,
       boost: r.boost,
       flipped: r.flipped,
       locked: r.locked,
@@ -118,9 +119,10 @@ type SerializedRailTuple = [
   number, // openingAngle
   number, // curvature
   number, // slopeBias
-  number, // channelWidth
+  number, // railSpacing
   number, // boost
-  number? // flipped (1 | 0)
+  number?, // flipped (1 | 0)
+  number? // bridgeSpacing
 ];
 
 interface SharePayload {
@@ -201,9 +203,10 @@ export function encodeSandboxShareHash(world: WorldState): string {
       round2(r.openingAngle),
       round2(r.curvature),
       round2(r.slopeBias),
-      round2(r.channelWidth),
+      round2(r.railSpacing),
       round2(r.boost),
       r.flipped ? 1 : 0,
+      round2(r.bridgeSpacing),
     ]),
     emitters: world.emitters.map((e) => {
       if (e.trackChannel) {
@@ -303,9 +306,10 @@ export function decodeSandboxShareHash(hash: string): Partial<{
         openingAngle: r[5] ?? 88,
         curvature: r[6] ?? 0.52,
         slopeBias: r[7] ?? 0,
-        channelWidth: r[8] ?? 25,
+        railSpacing: Math.max(9, Math.min(14.5, r[8] ?? 12.8)),
         boost: r[9] ?? 0.25,
         flipped: r[10] === 1,
+        bridgeSpacing: Math.max(28, Math.min(96, r[11] ?? 52)),
       })),
       emitters: (parsed.emitters ?? []).map((e, i) => ({
         id: `sb_em_${i}`,

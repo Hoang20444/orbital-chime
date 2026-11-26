@@ -8,7 +8,7 @@ import {
   drawPremiumMarble,
 } from "./materialsRenderer.ts";
 import { barLength, type GhostBranch } from "./physics.ts";
-import { buildRailGeometry, sampleRailCenter } from "./railGeometry.ts";
+import { buildRailGeometry, sampleRailPose } from "./railGeometry.ts";
 import type {
   BarPiece,
   LevelSolutionHint,
@@ -104,60 +104,77 @@ function drawTransferRail2D(
   isHovered: boolean
 ): void {
   const geom = buildRailGeometry(rail);
+  const pts = geom.centerPoints;
   const glow = rail.activeGlow ?? 0;
 
   ctx.save();
-  // EXACTLY TWO separate parallel metallic cylindrical rods (ZERO bottom trough / tube)
-  for (const rod of [geom.outerWall, geom.innerWall]) {
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
 
-    // Individual soft shadow under each rod
-    ctx.save();
-    ctx.translate(2.2, 4.2);
-    ctx.strokeStyle = "rgba(22, 28, 34, 0.16)";
-    ctx.lineWidth = geom.wallThickness + 1.2;
-    ctx.beginPath();
-    ctx.moveTo(rod[0].x, rod[0].y);
-    for (let i = 1; i < rod.length; i++) ctx.lineTo(rod[i].x, rod[i].y);
-    ctx.stroke();
-    ctx.restore();
+  // 2D Front View: front & back rails visually overlap into ONE single curved metallic rail
+  // 1. Subtle soft drop shadow below
+  ctx.save();
+  ctx.translate(2, 4);
+  ctx.strokeStyle = "rgba(22, 28, 34, 0.16)";
+  ctx.lineWidth = geom.rodRadius * 2 + 1.4;
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, pts[0].y);
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+  ctx.stroke();
+  ctx.restore();
 
-    // Dark graphite / black chrome metallic rod body
-    ctx.strokeStyle = isSelected || isHovered ? "#2A3542" : "#1C232B";
-    ctx.lineWidth = geom.wallThickness;
+  // 2. Subtle underside support bridge bracket ticks (strictly beneath rolling path)
+  ctx.strokeStyle = "#6F7B88";
+  ctx.lineWidth = 3.2;
+  for (const br of geom.bridges) {
     ctx.beginPath();
-    ctx.moveTo(rod[0].x, rod[0].y);
-    for (let i = 1; i < rod.length; i++) ctx.lineTo(rod[i].x, rod[i].y);
-    ctx.stroke();
-
-    // Subtle specular metallic sheen along rod center
-    ctx.strokeStyle = "rgba(185, 205, 224, 0.28)";
-    ctx.lineWidth = 2.2;
-    ctx.beginPath();
-    ctx.moveTo(rod[0].x, rod[0].y);
-    for (let i = 1; i < rod.length; i++) ctx.lineTo(rod[i].x, rod[i].y);
-    ctx.stroke();
-
-    // Thin cyan luminous strip
-    ctx.strokeStyle =
-      glow > 0.04
-        ? `rgba(76, 236, 255, ${(0.72 + glow * 0.28).toFixed(3)})`
-        : isSelected
-          ? "rgba(56, 226, 255, 0.9)"
-          : "rgba(56, 226, 255, 0.56)";
-    ctx.lineWidth = 1.4;
-    ctx.beginPath();
-    ctx.moveTo(rod[0].x, rod[0].y);
-    for (let i = 1; i < rod.length; i++) ctx.lineTo(rod[i].x, rod[i].y);
+    ctx.moveTo(br.point.x - br.upNormal.x * 1.5, br.point.y - br.upNormal.y * 1.5);
+    ctx.lineTo(br.point.x - br.upNormal.x * 5.2, br.point.y - br.upNormal.y * 5.2);
     ctx.stroke();
   }
 
-  // Subtle collision highlight on rod contact
+  // 3. Unified dark graphite / black chrome rail silhouette
+  ctx.strokeStyle = isSelected || isHovered ? "#263340" : "#182028";
+  ctx.lineWidth = geom.rodRadius * 2;
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, pts[0].y);
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+  ctx.stroke();
+
+  // 4. Brushed metallic specular sheen along the upper half
+  ctx.strokeStyle = "rgba(205, 220, 236, 0.42)";
+  ctx.lineWidth = 2.2;
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, pts[0].y);
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+  ctx.stroke();
+
+  // 5. Thin cyan luminous strip on the upper contact crest
+  ctx.strokeStyle =
+    glow > 0.04
+      ? `rgba(76, 236, 255, ${(0.75 + glow * 0.25).toFixed(3)})`
+      : isSelected
+        ? "rgba(56, 226, 255, 0.92)"
+        : "rgba(56, 226, 255, 0.56)";
+  ctx.lineWidth = 1.25;
+  ctx.beginPath();
+  ctx.moveTo(
+    pts[0].x + geom.upNormals[0].x * 2.1,
+    pts[0].y + geom.upNormals[0].y * 2.1
+  );
+  for (let i = 1; i < pts.length; i++) {
+    ctx.lineTo(
+      pts[i].x + geom.upNormals[i].x * 2.1,
+      pts[i].y + geom.upNormals[i].y * 2.1
+    );
+  }
+  ctx.stroke();
+
+  // 6. Subtle collision highlight on upper surface impact
   const flash = rail.hitFlash ?? 0;
   if (flash > 0.04 && rail.hitX !== undefined && rail.hitY !== undefined) {
     const hg = ctx.createRadialGradient(rail.hitX, rail.hitY, 1, rail.hitX, rail.hitY, 14);
-    hg.addColorStop(0, `rgba(145, 248, 255, ${(flash * 0.85).toFixed(3)})`);
+    hg.addColorStop(0, `rgba(145, 248, 255, ${(flash * 0.82).toFixed(3)})`);
     hg.addColorStop(1, "rgba(56, 226, 255, 0)");
     ctx.fillStyle = hg;
     ctx.beginPath();
@@ -165,15 +182,17 @@ function drawTransferRail2D(
     ctx.fill();
   }
 
-  // Subtle traveling cyan highlight along centerline while marble is between the twin rails
+  // 7. Subtle cyan traveling glint on upper contact surface while marble rolls on top
   if (glow > 0.04) {
-    const pt = sampleRailCenter(geom, rail.pulseT ?? 0.5);
-    const rg = ctx.createRadialGradient(pt.x, pt.y, 1, pt.x, pt.y, 15);
-    rg.addColorStop(0, `rgba(110, 240, 255, ${(glow * 0.55).toFixed(3)})`);
+    const pose = sampleRailPose(geom, rail.pulseT ?? 0.5);
+    const gx = pose.point.x + pose.upNormal.x * geom.rodRadius;
+    const gy = pose.point.y + pose.upNormal.y * geom.rodRadius;
+    const rg = ctx.createRadialGradient(gx, gy, 1, gx, gy, 14);
+    rg.addColorStop(0, `rgba(110, 240, 255, ${(glow * 0.6).toFixed(3)})`);
     rg.addColorStop(1, "rgba(56, 226, 255, 0)");
     ctx.fillStyle = rg;
     ctx.beginPath();
-    ctx.arc(pt.x, pt.y, 15, 0, Math.PI * 2);
+    ctx.arc(gx, gy, 14, 0, Math.PI * 2);
     ctx.fill();
   }
 

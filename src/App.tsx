@@ -195,6 +195,9 @@ export const App: React.FC = () => {
   const [is3d, setIs3d] = useState(true);
   const is3dRef = useRef(is3d);
   is3dRef.current = is3d;
+  const [cameraViewMode, setCameraViewMode] = useState<"perspective" | "front">("perspective");
+  const cameraViewModeRef = useRef(cameraViewMode);
+  cameraViewModeRef.current = cameraViewMode;
   const worldRef = useRef<WorldState>(createWorldFromLevel(LEVELS[0], false));
   const undoStackRef = useRef<EditableSnapshot[]>([]);
   const redoStackRef = useRef<EditableSnapshot[]>([]);
@@ -260,7 +263,9 @@ export const App: React.FC = () => {
       setShowTip(false);
       syncUi();
     } else if (window.location.hash.startsWith("#preset=")) {
-      const pid = window.location.hash.slice("#preset=".length).trim();
+      const hashBody = window.location.hash.slice(1);
+      const params = new URLSearchParams(hashBody);
+      const pid = (params.get("preset") ?? "").trim();
       const preset = SANDBOX_PRESETS.find((p) => p.id === pid);
       if (preset) {
         const w = createWorldFromPreset(preset);
@@ -271,6 +276,30 @@ export const App: React.FC = () => {
         rhythmEngine.setBpm(w.bpm);
         setBpm(w.bpm);
         setScaleId(w.scaleId);
+        const viewParam = params.get("view");
+        if (viewParam === "2d") {
+          setIs3d(false);
+        } else if (viewParam === "front") {
+          setIs3d(true);
+          setCameraViewMode("front");
+        } else if (viewParam === "perspective") {
+          setIs3d(true);
+          setCameraViewMode("perspective");
+        }
+        const zParam = Number(params.get("zoom"));
+        const fxParam = Number(params.get("fx"));
+        const fyParam = Number(params.get("fy"));
+        if (Number.isFinite(zParam) && zParam > 0.3 && zParam <= 3.0) {
+          cameraRef.current.zoom = zParam;
+          setZoomPct(Math.round(zParam * 100));
+        }
+        if (Number.isFinite(fxParam)) cameraRef.current.focusX = fxParam;
+        if (Number.isFinite(fyParam)) cameraRef.current.focusY = fyParam;
+        const warmupSec = Number(params.get("warmup"));
+        if (Number.isFinite(warmupSec) && warmupSec > 0 && warmupSec <= 15) {
+          const steps = Math.round(warmupSec / FIXED_DT);
+          for (let i = 0; i < steps; i++) stepFixed(w, true);
+        }
         setIsPlaying(true);
         setFollowBall(false);
         setShowTip(false);
@@ -866,6 +895,7 @@ export const App: React.FC = () => {
           }
           const r3d = renderer3dRef.current;
           if (r3d) {
+            r3d.setCameraViewMode(cameraViewModeRef.current);
             r3d.resize(rect.width, rect.height);
             r3d.render(world, cam, interpAlpha, selectedIdRef.current);
             const ctx = canvas.getContext("2d");
@@ -950,7 +980,12 @@ export const App: React.FC = () => {
           pts[j + 1].x,
           pts[j + 1].y
         );
-        if (distSq(wx, wy, cx, cy) <= (geom.halfChannel + 8) ** 2) {
+        const up = geom.upNormals[j];
+        const hitBody = distSq(wx, wy, cx, cy) <= 18 * 18;
+        const hitTop =
+          distSq(wx, wy, cx + up.x * geom.supportHeight, cy + up.y * geom.supportHeight) <=
+          14 * 14;
+        if (hitBody || hitTop) {
           return { kind: "rail_body" as const, rail: r };
         }
       }
@@ -1121,13 +1156,14 @@ export const App: React.FC = () => {
           variant: "v",
           x: clamped.x,
           y: clamped.y,
-          rotation: 0.12,
-          armLength: 130,
-          openingAngle: 88,
-          curvature: 0.56,
-          slopeBias: 0.08,
-          channelWidth: 26,
-          boost: 0.2,
+          rotation: 0.08,
+          armLength: 132,
+          openingAngle: 92,
+          curvature: 0.58,
+          slopeBias: 0.06,
+          railSpacing: 12.8,
+          bridgeSpacing: 52,
+          boost: 0.12,
         };
         if (!w.rails) w.rails = [];
         w.rails.push(newRail);
@@ -1547,6 +1583,40 @@ export const App: React.FC = () => {
         >
           {is3d ? "3D" : "2D"}
         </button>
+
+        {is3d && (
+          <button
+            type="button"
+            onClick={() => {
+              synthEngine.unlock();
+              synthEngine.playUiTick();
+              setCameraViewMode((m) => (m === "perspective" ? "front" : "perspective"));
+            }}
+            className="hw-btn"
+            style={{
+              padding: "4px 7px",
+              fontSize: 11,
+              fontFamily: "var(--font-mono), monospace",
+              fontWeight: 600,
+              backgroundColor: "#FFFFFF",
+              color: "#1E4B63",
+              borderColor: "var(--border)",
+            }}
+            title={
+              locale === "vi"
+                ? "Chuyển góc nhìn Phối cảnh 3D / Chính diện"
+                : "Toggle 3D Perspective / Front view"
+            }
+          >
+            {cameraViewMode === "perspective"
+              ? locale === "vi"
+                ? "Góc 3D"
+                : "Persp"
+              : locale === "vi"
+                ? "Trước"
+                : "Front"}
+          </button>
+        )}
 
         <button
           type="button"

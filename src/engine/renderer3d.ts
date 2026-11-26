@@ -4,7 +4,7 @@ import { lengthToNote } from "../audio/scales.ts";
 import { FONTS, MATERIALS, STAGE_H, TOKENS } from "../theme/tokens.ts";
 import {
   buildRailGeometry,
-  sampleRailCenter,
+  sampleRailPose,
   type RailGeometry,
 } from "./railGeometry.ts";
 import type {
@@ -41,6 +41,7 @@ const FLASH_COLORS: Record<MaterialType, number> = {
 };
 
 const DEFAULT_MARBLE_TINT = new THREE.Color(0x6fd8ff);
+const RAIL_CENTER_Z = 2;
 
 /* ------------------------------------------------------------------ */
 /*  Mesh bookkeeping                                                   */
@@ -83,12 +84,12 @@ interface RingMeshEntry {
 
 interface RailMeshEntry {
   group: THREE.Group;
-  outerMesh: THREE.Mesh;
-  innerMesh: THREE.Mesh;
-  caps: THREE.Mesh[];
-  outerStrip: THREE.Mesh;
-  innerStrip: THREE.Mesh;
-  travelSprite: THREE.Sprite;
+  frontMesh: THREE.Mesh;
+  backMesh: THREE.Mesh;
+  frontStrip: THREE.Mesh;
+  backStrip: THREE.Mesh;
+  frontContactSprite: THREE.Sprite;
+  backContactSprite: THREE.Sprite;
   hitSprite: THREE.Sprite;
   exitSprite: THREE.Sprite;
   sig: string;
@@ -167,16 +168,28 @@ function makeBackdropTexture(): THREE.CanvasTexture {
   return tex;
 }
 
-function buildRodTube(pts: Vec2[], radius: number): THREE.TubeGeometry {
-  const vecs = pts.map((p) => new THREE.Vector3(p.x, -p.y, 0));
-  const curve = new THREE.CatmullRomCurve3(vecs);
-  return new THREE.TubeGeometry(curve, 36, radius, 14, false);
-}
-
-function buildStripTube(pts: Vec2[], z: number): THREE.TubeGeometry {
+function buildDualRodTube(pts: Vec2[], z: number, radius: number): THREE.TubeGeometry {
   const vecs = pts.map((p) => new THREE.Vector3(p.x, -p.y, z));
   const curve = new THREE.CatmullRomCurve3(vecs);
-  return new THREE.TubeGeometry(curve, 32, 0.85, 8, false);
+  return new THREE.TubeGeometry(curve, 48, radius, 16, false);
+}
+
+function buildDualStripTube(
+  pts: Vec2[],
+  upNormals: Vec2[],
+  upOffset: number,
+  z: number
+): THREE.TubeGeometry {
+  const vecs = pts.map(
+    (p, i) =>
+      new THREE.Vector3(
+        p.x + upNormals[i].x * upOffset,
+        -(p.y + upNormals[i].y * upOffset),
+        z
+      )
+  );
+  const curve = new THREE.CatmullRomCurve3(vecs);
+  return new THREE.TubeGeometry(curve, 40, 0.62, 8, false);
 }
 
 function hashPhase(id: string): number {
@@ -222,6 +235,7 @@ export class OrbitalRenderer3D {
   private sharedPoolGeo = new THREE.CircleGeometry(1, 32);
   private sharedRingGeo = new THREE.RingGeometry(0.86, 1, 56);
   private sharedRailCapGeo = new THREE.SphereGeometry(1, 14, 10);
+  private sharedBridgeGeo = new THREE.CylinderGeometry(1, 1, 1, 16);
 
   private marbleMat: THREE.MeshPhysicalMaterial;
   private barMaterials: Record<MaterialType, THREE.MeshPhysicalMaterial>;
@@ -229,6 +243,8 @@ export class OrbitalRenderer3D {
   private pinMaterial: THREE.MeshPhysicalMaterial;
   private brassMat: THREE.MeshPhysicalMaterial;
   private railGraphiteMat: THREE.MeshPhysicalMaterial;
+  private railChromeMat: THREE.MeshPhysicalMaterial;
+  private cameraViewMode: "perspective" | "front" = "perspective";
 
   // Impact FX pools
   private impactRings: ImpactRing[] = [];
@@ -397,12 +413,21 @@ export class OrbitalRenderer3D {
     });
 
     this.railGraphiteMat = new THREE.MeshPhysicalMaterial({
-      color: 0x1c222b,
-      roughness: 0.2,
+      color: 0x1e252f,
+      roughness: 0.19,
       metalness: 0.92,
       clearcoat: 0.85,
+      clearcoatRoughness: 0.11,
+      envMapIntensity: 1.25,
+    });
+
+    this.railChromeMat = new THREE.MeshPhysicalMaterial({
+      color: 0xc2cdd8,
+      roughness: 0.18,
+      metalness: 0.9,
+      clearcoat: 0.8,
       clearcoatRoughness: 0.12,
-      envMapIntensity: 1.15,
+      envMapIntensity: 1.4,
     });
 
     // Impact ring pool
@@ -488,6 +513,10 @@ export class OrbitalRenderer3D {
     this.camera.updateProjectionMatrix();
   }
 
+  public setCameraViewMode(mode: "perspective" | "front"): void {
+    this.cameraViewMode = mode;
+  }
+
   public updateCamera(cameraState: CameraState): void {
     const zoom = Math.max(0.28, Math.min(2.6, cameraState.zoom));
     const fovRad = (this.camera.fov * Math.PI) / 180;
@@ -497,13 +526,18 @@ export class OrbitalRenderer3D {
     const fx = cameraState.focusX;
     const fy = -cameraState.focusY;
 
-    // Gentle 3/4 studio tilt so extruded depth reads clearly
-    this.camera.position.set(fx + 42 / zoom, fy - 110 / zoom, dist);
+    if (this.cameraViewMode === "front") {
+      // Straight-on 3D front view: front & back rails align visually while marble rolls visibly on top
+      this.camera.position.set(fx, fy + dist * 0.055, dist * 0.998);
+    } else {
+      // Elevated 3/4 top-front perspective revealing depth-separated dual rails, bridges & marble on top
+      this.camera.position.set(fx - dist * 0.3, fy + dist * 0.62, dist * 0.73);
+    }
     this.camera.lookAt(fx, fy, 0);
     this.camera.updateMatrixWorld();
 
-    // Near-frontal key light => compact contact shadows instead of long blobs
-    this.sunLight.position.set(fx - 160, fy + 230, 760);
+    // Soft studio overhead-front key light => clear metallic highlights + contact shadows
+    this.sunLight.position.set(fx - 180, fy + 280, 760);
     this.sunLight.target.position.set(fx, fy, 0);
     this.sunLight.target.updateMatrixWorld();
 
@@ -958,7 +992,7 @@ export class OrbitalRenderer3D {
       const iy = m.prevY + (m.y - m.prevY) * alpha;
       entry.group.position.set(ix, -iy, 2);
 
-      // Squash & stretch along impact normal, springs back via m.squash decay
+      // Squash & stretch along impact normal, plus natural rolling rotation
       const sScale = m.radius / 8;
       if (m.squash > 0.02) {
         entry.sphere.rotation.z = -m.squashAngle;
@@ -968,6 +1002,7 @@ export class OrbitalRenderer3D {
           sScale
         );
       } else {
+        entry.sphere.rotation.z -= (m.vx * dt) / Math.max(4, m.radius);
         entry.sphere.scale.setScalar(sScale);
       }
 
@@ -1145,42 +1180,29 @@ export class OrbitalRenderer3D {
     const alive = new Set<string>();
     for (const rail of rails) {
       alive.add(rail.id);
-      const sig = `${rail.variant}_${rail.armLength.toFixed(1)}_${rail.openingAngle.toFixed(1)}_${rail.curvature.toFixed(2)}_${rail.slopeBias.toFixed(2)}_${rail.channelWidth.toFixed(1)}_${rail.flipped ? 1 : 0}`;
+      const rSpacing = Math.max(9, Math.min(14.5, rail.railSpacing || 12.8));
+      const bSpacing = Math.max(28, Math.min(96, rail.bridgeSpacing || 52));
+      const sig = `${rail.variant}_${rail.armLength.toFixed(1)}_${rail.openingAngle.toFixed(1)}_${rail.curvature.toFixed(2)}_${rail.slopeBias.toFixed(2)}_${rSpacing.toFixed(1)}_${bSpacing.toFixed(0)}_${rail.flipped ? 1 : 0}`;
       let entry = this.railMeshes.get(rail.id);
-
-      const rebuildGeos = (geom: RailGeometry) => {
-        const localOuter = geom.outerWall.map((p) => ({
-          x: p.x - rail.x,
-          y: p.y - rail.y,
-        }));
-        const localInner = geom.innerWall.map((p) => ({
-          x: p.x - rail.x,
-          y: p.y - rail.y,
-        }));
-        // Undo world transform? buildRailGeometry already rotated & translated.
-        // Keeping mesh at (0,0,0) in world space avoids double-rotation math!
-        void localOuter;
-        void localInner;
-      };
-      void rebuildGeos;
 
       if (!entry || entry.sig !== sig) {
         if (entry) {
           this.scene.remove(entry.group);
           this.scene.remove(entry.hitSprite);
           this.scene.remove(entry.exitSprite);
-          entry.outerMesh.geometry.dispose();
-          entry.innerMesh.geometry.dispose();
-          entry.outerStrip.geometry.dispose();
-          entry.innerStrip.geometry.dispose();
-          (entry.outerMesh.material as THREE.Material).dispose();
-          (entry.outerStrip.material as THREE.Material).dispose();
-          (entry.innerStrip.material as THREE.Material).dispose();
-          (entry.travelSprite.material as THREE.Material).dispose();
+          entry.frontMesh.geometry.dispose();
+          entry.backMesh.geometry.dispose();
+          entry.frontStrip.geometry.dispose();
+          entry.backStrip.geometry.dispose();
+          (entry.frontMesh.material as THREE.Material).dispose();
+          (entry.frontStrip.material as THREE.Material).dispose();
+          (entry.backStrip.material as THREE.Material).dispose();
+          (entry.frontContactSprite.material as THREE.Material).dispose();
+          (entry.backContactSprite.material as THREE.Material).dispose();
           (entry.hitSprite.material as THREE.Material).dispose();
           (entry.exitSprite.material as THREE.Material).dispose();
         }
-        // Build geometries in local origin (0,0) and position group at (rail.x, -rail.y, 0) rotated by -rail.rotation
+        // Build geometries in local space; depth separation +/- halfS around RAIL_CENTER_Z = 2
         const localRail: TransferRailPiece = {
           ...rail,
           x: 0,
@@ -1189,68 +1211,116 @@ export class OrbitalRenderer3D {
         };
         const localGeom = buildRailGeometry(localRail);
         const worldGeom = buildRailGeometry(rail);
-        const rodRadius = localGeom.wallThickness * 0.5;
+        const rodR = localGeom.rodRadius;
+        const halfS = localGeom.railSpacing * 0.5;
 
         const group = new THREE.Group();
         const wallMat = this.railGraphiteMat.clone();
-        const outerMesh = new THREE.Mesh(
-          buildRodTube(localGeom.outerWall, rodRadius),
+        const frontMesh = new THREE.Mesh(
+          buildDualRodTube(localGeom.centerPoints, halfS, rodR),
           wallMat
         );
-        outerMesh.castShadow = true;
-        outerMesh.receiveShadow = true;
+        frontMesh.castShadow = true;
+        frontMesh.receiveShadow = true;
 
-        const innerMesh = new THREE.Mesh(
-          buildRodTube(localGeom.innerWall, rodRadius),
+        const backMesh = new THREE.Mesh(
+          buildDualRodTube(localGeom.centerPoints, -halfS, rodR),
           wallMat
         );
-        innerMesh.castShadow = true;
-        innerMesh.receiveShadow = true;
+        backMesh.castShadow = true;
+        backMesh.receiveShadow = true;
 
-        // Rounded hemispherical end-caps on all four rod endpoints (open space between the two rods)
+        // Rounded brushed-chrome end-caps on front & back rails
         const capPoints = [
-          localGeom.outerWall[0],
-          localGeom.outerWall[localGeom.outerWall.length - 1],
-          localGeom.innerWall[0],
-          localGeom.innerWall[localGeom.innerWall.length - 1],
+          localGeom.centerPoints[0],
+          localGeom.centerPoints[localGeom.centerPoints.length - 1],
         ];
-        const caps = capPoints.map((pt) => {
-          const cap = new THREE.Mesh(this.sharedRailCapGeo, wallMat);
-          cap.position.set(pt.x, -pt.y, 0);
-          cap.scale.setScalar(rodRadius);
-          cap.castShadow = true;
-          cap.receiveShadow = true;
-          return cap;
-        });
+        const caps: THREE.Mesh[] = [];
+        for (const zOff of [halfS, -halfS]) {
+          for (const pt of capPoints) {
+            const cap = new THREE.Mesh(this.sharedRailCapGeo, this.railChromeMat);
+            cap.position.set(pt.x, -pt.y, zOff);
+            cap.scale.setScalar(rodR * 0.99);
+            cap.castShadow = true;
+            cap.receiveShadow = true;
+            caps.push(cap);
+          }
+        }
 
-        const stripMatOuter = new THREE.MeshBasicMaterial({
+        // Cylindrical connecting support bridges below rolling surface (non-obstructing)
+        const bridges: THREE.Mesh[] = [];
+        for (const br of localGeom.bridges) {
+          const bridge = new THREE.Mesh(this.sharedBridgeGeo, this.railChromeMat);
+          bridge.rotation.x = Math.PI * 0.5;
+          bridge.scale.set(1.95, localGeom.railSpacing, 1.95);
+          bridge.position.set(
+            br.point.x - br.upNormal.x * 1.65,
+            -(br.point.y - br.upNormal.y * 1.65),
+            0
+          );
+          bridge.castShadow = true;
+          bridge.receiveShadow = true;
+          bridges.push(bridge);
+        }
+
+        // Two rear mounting standoffs behind back rail (matching reference silhouette, smooth upper rails)
+        const standoffs: THREE.Mesh[] = [];
+        for (const st of localGeom.standoffs) {
+          const post = new THREE.Mesh(this.sharedBridgeGeo, this.railChromeMat);
+          post.rotation.x = Math.PI * 0.5;
+          post.scale.set(2.1, 6.4, 2.1);
+          post.position.set(
+            st.point.x - st.upNormal.x * 1.0,
+            -(st.point.y - st.upNormal.y * 1.0),
+            -halfS - 3.2
+          );
+          post.castShadow = true;
+          post.receiveShadow = true;
+          standoffs.push(post);
+        }
+
+        const stripMatFront = new THREE.MeshBasicMaterial({
           color: 0x38e2ff,
           transparent: true,
           opacity: 0.72,
         });
-        const stripMatInner = stripMatOuter.clone();
+        const stripMatBack = stripMatFront.clone();
 
-        const stripZ = rodRadius + 0.35;
-        const outerStrip = new THREE.Mesh(
-          buildStripTube(localGeom.outerWall, stripZ),
-          stripMatOuter
+        const frontStrip = new THREE.Mesh(
+          buildDualStripTube(
+            localGeom.centerPoints,
+            localGeom.upNormals,
+            rodR * 0.72,
+            halfS + rodR * 0.55
+          ),
+          stripMatFront
         );
-        const innerStrip = new THREE.Mesh(
-          buildStripTube(localGeom.innerWall, stripZ),
-          stripMatInner
+        const backStrip = new THREE.Mesh(
+          buildDualStripTube(
+            localGeom.centerPoints,
+            localGeom.upNormals,
+            rodR * 0.72,
+            -(halfS + rodR * 0.55)
+          ),
+          stripMatBack
         );
 
-        const travelSprite = new THREE.Sprite(
-          new THREE.SpriteMaterial({
-            map: this.softDot,
-            color: 0x4ef0ff,
-            transparent: true,
-            opacity: 0,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false,
-          })
-        );
-        travelSprite.scale.set(42, 42, 1);
+        const makeContactSprite = () => {
+          const sp = new THREE.Sprite(
+            new THREE.SpriteMaterial({
+              map: this.softDot,
+              color: 0x7ef6ff,
+              transparent: true,
+              opacity: 0,
+              blending: THREE.AdditiveBlending,
+              depthWrite: false,
+            })
+          );
+          sp.scale.set(22, 22, 1);
+          return sp;
+        };
+        const frontContactSprite = makeContactSprite();
+        const backContactSprite = makeContactSprite();
 
         const hitSprite = new THREE.Sprite(
           new THREE.SpriteMaterial({
@@ -1274,21 +1344,31 @@ export class OrbitalRenderer3D {
             depthWrite: false,
           })
         );
-        exitSprite.scale.set(48, 48, 1);
+        exitSprite.scale.set(44, 44, 1);
 
-        group.add(outerMesh, innerMesh, ...caps, outerStrip, innerStrip, travelSprite);
+        group.add(
+          backMesh,
+          frontMesh,
+          ...caps,
+          ...bridges,
+          ...standoffs,
+          backStrip,
+          frontStrip,
+          backContactSprite,
+          frontContactSprite
+        );
         this.scene.add(group);
         this.scene.add(hitSprite);
         this.scene.add(exitSprite);
 
         entry = {
           group,
-          outerMesh,
-          innerMesh,
-          caps,
-          outerStrip,
-          innerStrip,
-          travelSprite,
+          frontMesh,
+          backMesh,
+          frontStrip,
+          backStrip,
+          frontContactSprite,
+          backContactSprite,
           hitSprite,
           exitSprite,
           sig,
@@ -1298,33 +1378,40 @@ export class OrbitalRenderer3D {
       }
 
       entry.geom = buildRailGeometry(rail);
-      entry.group.position.set(rail.x, -rail.y, 0);
+      entry.group.position.set(rail.x, -rail.y, RAIL_CENTER_Z);
       entry.group.rotation.z = -rail.rotation;
 
       const glow = rail.activeGlow ?? 0;
       const isSel = selectedId === rail.id;
-      const wallMat = entry.outerMesh.material as THREE.MeshPhysicalMaterial;
+      const wallMat = entry.frontMesh.material as THREE.MeshPhysicalMaterial;
       wallMat.emissive.setHex(isSel ? 0x164e63 : 0x0b4b61);
-      wallMat.emissiveIntensity = isSel ? 0.55 : glow * 0.48;
+      wallMat.emissiveIntensity = isSel ? 0.55 : glow * 0.45;
 
       const stripOp = 0.52 + glow * 0.48;
-      (entry.outerStrip.material as THREE.MeshBasicMaterial).opacity = stripOp;
-      (entry.innerStrip.material as THREE.MeshBasicMaterial).opacity = stripOp;
+      (entry.frontStrip.material as THREE.MeshBasicMaterial).opacity = stripOp;
+      (entry.backStrip.material as THREE.MeshBasicMaterial).opacity = stripOp;
 
       if (glow > 0.04) {
         const localGeom = buildRailGeometry({ ...rail, x: 0, y: 0, rotation: 0 });
-        const pt = sampleRailCenter(localGeom, rail.pulseT ?? 0.5);
-        entry.travelSprite.visible = true;
-        entry.travelSprite.position.set(pt.x, -pt.y, 6);
-        (entry.travelSprite.material as THREE.SpriteMaterial).opacity = glow * 0.85;
+        const pose = sampleRailPose(localGeom, rail.pulseT ?? 0.5);
+        const cx = pose.point.x + pose.upNormal.x * (localGeom.rodRadius * 0.85);
+        const cy = -(pose.point.y + pose.upNormal.y * (localGeom.rodRadius * 0.85));
+        const zOff = localGeom.railSpacing * 0.45;
+        entry.frontContactSprite.visible = true;
+        entry.frontContactSprite.position.set(cx, cy, zOff);
+        (entry.frontContactSprite.material as THREE.SpriteMaterial).opacity = glow * 0.88;
+        entry.backContactSprite.visible = true;
+        entry.backContactSprite.position.set(cx, cy, -zOff);
+        (entry.backContactSprite.material as THREE.SpriteMaterial).opacity = glow * 0.88;
       } else {
-        entry.travelSprite.visible = false;
+        entry.frontContactSprite.visible = false;
+        entry.backContactSprite.visible = false;
       }
 
       const hitF = rail.hitFlash ?? 0;
       if (hitF > 0.04 && rail.hitX !== undefined && rail.hitY !== undefined) {
         entry.hitSprite.visible = true;
-        entry.hitSprite.position.set(rail.hitX, -rail.hitY, 6);
+        entry.hitSprite.position.set(rail.hitX, -rail.hitY, RAIL_CENTER_Z + 4);
         const hs = 18 + (1 - hitF) * 18;
         entry.hitSprite.scale.set(hs, hs, 1);
         (entry.hitSprite.material as THREE.SpriteMaterial).opacity = hitF * 0.82;
@@ -1335,7 +1422,7 @@ export class OrbitalRenderer3D {
       const exP = rail.exitPulse ?? 0;
       if (exP > 0.04 && rail.exitX !== undefined && rail.exitY !== undefined) {
         entry.exitSprite.visible = true;
-        entry.exitSprite.position.set(rail.exitX, -rail.exitY, 8);
+        entry.exitSprite.position.set(rail.exitX, -rail.exitY, RAIL_CENTER_Z + 6);
         const s = 28 + (1 - exP) * 34;
         entry.exitSprite.scale.set(s, s, 1);
         (entry.exitSprite.material as THREE.SpriteMaterial).opacity = exP * 0.78;
@@ -1349,14 +1436,15 @@ export class OrbitalRenderer3D {
         this.scene.remove(entry.group);
         this.scene.remove(entry.hitSprite);
         this.scene.remove(entry.exitSprite);
-        entry.outerMesh.geometry.dispose();
-        entry.innerMesh.geometry.dispose();
-        entry.outerStrip.geometry.dispose();
-        entry.innerStrip.geometry.dispose();
-        (entry.outerMesh.material as THREE.Material).dispose();
-        (entry.outerStrip.material as THREE.Material).dispose();
-        (entry.innerStrip.material as THREE.Material).dispose();
-        (entry.travelSprite.material as THREE.Material).dispose();
+        entry.frontMesh.geometry.dispose();
+        entry.backMesh.geometry.dispose();
+        entry.frontStrip.geometry.dispose();
+        entry.backStrip.geometry.dispose();
+        (entry.frontMesh.material as THREE.Material).dispose();
+        (entry.frontStrip.material as THREE.Material).dispose();
+        (entry.backStrip.material as THREE.Material).dispose();
+        (entry.frontContactSprite.material as THREE.Material).dispose();
+        (entry.backContactSprite.material as THREE.Material).dispose();
         (entry.hitSprite.material as THREE.Material).dispose();
         (entry.exitSprite.material as THREE.Material).dispose();
         this.railMeshes.delete(id);
@@ -1559,20 +1647,23 @@ export class OrbitalRenderer3D {
     this.sharedPoolGeo.dispose();
     this.sharedRingGeo.dispose();
     this.sharedRailCapGeo.dispose();
+    this.sharedBridgeGeo.dispose();
     this.marbleMat.dispose();
     this.silentMaterial.dispose();
     this.pinMaterial.dispose();
     this.railGraphiteMat.dispose();
+    this.railChromeMat.dispose();
     Object.values(this.barMaterials).forEach((m) => m.dispose());
     for (const entry of this.railMeshes.values()) {
-      entry.outerMesh.geometry.dispose();
-      entry.innerMesh.geometry.dispose();
-      entry.outerStrip.geometry.dispose();
-      entry.innerStrip.geometry.dispose();
-      (entry.outerMesh.material as THREE.Material).dispose();
-      (entry.outerStrip.material as THREE.Material).dispose();
-      (entry.innerStrip.material as THREE.Material).dispose();
-      (entry.travelSprite.material as THREE.Material).dispose();
+      entry.frontMesh.geometry.dispose();
+      entry.backMesh.geometry.dispose();
+      entry.frontStrip.geometry.dispose();
+      entry.backStrip.geometry.dispose();
+      (entry.frontMesh.material as THREE.Material).dispose();
+      (entry.frontStrip.material as THREE.Material).dispose();
+      (entry.backStrip.material as THREE.Material).dispose();
+      (entry.frontContactSprite.material as THREE.Material).dispose();
+      (entry.backContactSprite.material as THREE.Material).dispose();
       (entry.hitSprite.material as THREE.Material).dispose();
       (entry.exitSprite.material as THREE.Material).dispose();
     }
