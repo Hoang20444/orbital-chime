@@ -40,12 +40,27 @@ export function buildRailGeometry(rail: TransferRailPiece): RailGeometry {
     (Math.max(40, Math.min(150, rail.openingAngle || 88)) * 0.5 * Math.PI) / 180;
   const curv = Math.max(0.2, Math.min(0.88, rail.curvature || 0.52));
   const bias = Math.max(-0.45, Math.min(0.45, rail.slopeBias || 0));
-  const wallThickness = 5;
+  const wallThickness = 7.6; // diameter of each 3D cylindrical rod (rodRadius = 3.8)
   const halfChannel = Math.max(11.5, (rail.channelWidth || 25) * 0.5);
 
   const localPts: Vec2[] = [];
 
   switch (rail.variant) {
+    case "straight": {
+      const steps = 13;
+      const startX = -armLen;
+      const startY = -bias * armLen * 0.3;
+      const endX = armLen;
+      const endY = bias * armLen * 0.3;
+      for (let i = 0; i <= steps; i++) {
+        const u = i / steps;
+        localPts.push({
+          x: startX + (endX - startX) * u,
+          y: startY + (endY - startY) * u,
+        });
+      }
+      break;
+    }
     case "v":
     default: {
       // Entry arm goes from upper-left (-dx, -dy) down toward origin (0, 0),
@@ -136,10 +151,8 @@ export function buildRailGeometry(rail: TransferRailPiece): RailGeometry {
   for (let i = 0; i < count; i++) {
     const c = centerPoints[i];
     const n = normals[i];
-    // Gentle outward funnel flare at entry (i=0,1) and exit (i=count-2, count-1)
-    let flare = 0;
-    if (i === 0 || i === count - 1) flare = 5.5;
-    else if (i === 1 || i === count - 2) flare = 2.4;
+    // Subtle outward entrance/exit funnel flare at the endpoints only
+    const flare = i === 0 || i === count - 1 ? 3.5 : 0;
 
     const off = wallOffsetBase + flare;
     const ow = { x: c.x + n.x * off, y: c.y + n.y * off };

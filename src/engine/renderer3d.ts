@@ -85,10 +85,11 @@ interface RailMeshEntry {
   group: THREE.Group;
   outerMesh: THREE.Mesh;
   innerMesh: THREE.Mesh;
-  troughMesh: THREE.Mesh;
+  caps: THREE.Mesh[];
   outerStrip: THREE.Mesh;
   innerStrip: THREE.Mesh;
   travelSprite: THREE.Sprite;
+  hitSprite: THREE.Sprite;
   exitSprite: THREE.Sprite;
   sig: string;
   geom: RailGeometry;
@@ -166,61 +167,16 @@ function makeBackdropTexture(): THREE.CanvasTexture {
   return tex;
 }
 
-function buildRibbonWallGeometry(
-  pts: Vec2[],
-  halfW: number,
-  depth: number
-): THREE.ExtrudeGeometry {
-  const n = pts.length;
-  const leftSide: Vec2[] = [];
-  const rightSide: Vec2[] = [];
-  for (let i = 0; i < n; i++) {
-    const p = pts[Math.max(0, i - 1)];
-    const q = pts[Math.min(n - 1, i + 1)];
-    const dx = q.x - p.x;
-    const dy = q.y - p.y;
-    const len = Math.hypot(dx, dy) || 1;
-    const nx = -dy / len;
-    const ny = dx / len;
-    leftSide.push({ x: pts[i].x + nx * halfW, y: -(pts[i].y + ny * halfW) });
-    rightSide.push({ x: pts[i].x - nx * halfW, y: -(pts[i].y - ny * halfW) });
-  }
-  const shape = new THREE.Shape();
-  shape.moveTo(leftSide[0].x, leftSide[0].y);
-  for (let i = 1; i < n; i++) shape.lineTo(leftSide[i].x, leftSide[i].y);
-  for (let i = n - 1; i >= 0; i--) shape.lineTo(rightSide[i].x, rightSide[i].y);
-  shape.closePath();
-
-  const geo = new THREE.ExtrudeGeometry(shape, {
-    depth,
-    bevelEnabled: true,
-    bevelSegments: 2,
-    steps: 1,
-    bevelSize: 1.1,
-    bevelThickness: 1.4,
-  });
-  geo.translate(0, 0, -depth * 0.5);
-  return geo;
-}
-
-function buildTroughGeometry(outer: Vec2[], inner: Vec2[]): THREE.ExtrudeGeometry {
-  const shape = new THREE.Shape();
-  shape.moveTo(outer[0].x, -outer[0].y);
-  for (let i = 1; i < outer.length; i++) shape.lineTo(outer[i].x, -outer[i].y);
-  for (let i = inner.length - 1; i >= 0; i--) shape.lineTo(inner[i].x, -inner[i].y);
-  shape.closePath();
-  const geo = new THREE.ExtrudeGeometry(shape, {
-    depth: 3,
-    bevelEnabled: false,
-  });
-  geo.translate(0, 0, -9);
-  return geo;
+function buildRodTube(pts: Vec2[], radius: number): THREE.TubeGeometry {
+  const vecs = pts.map((p) => new THREE.Vector3(p.x, -p.y, 0));
+  const curve = new THREE.CatmullRomCurve3(vecs);
+  return new THREE.TubeGeometry(curve, 36, radius, 14, false);
 }
 
 function buildStripTube(pts: Vec2[], z: number): THREE.TubeGeometry {
   const vecs = pts.map((p) => new THREE.Vector3(p.x, -p.y, z));
   const curve = new THREE.CatmullRomCurve3(vecs);
-  return new THREE.TubeGeometry(curve, 28, 0.95, 6, false);
+  return new THREE.TubeGeometry(curve, 32, 0.85, 8, false);
 }
 
 function hashPhase(id: string): number {
@@ -265,6 +221,7 @@ export class OrbitalRenderer3D {
   private sharedPinGeo = new THREE.CylinderGeometry(2.1, 2.3, 4.5, 14);
   private sharedPoolGeo = new THREE.CircleGeometry(1, 32);
   private sharedRingGeo = new THREE.RingGeometry(0.86, 1, 56);
+  private sharedRailCapGeo = new THREE.SphereGeometry(1, 14, 10);
 
   private marbleMat: THREE.MeshPhysicalMaterial;
   private barMaterials: Record<MaterialType, THREE.MeshPhysicalMaterial>;
@@ -272,7 +229,6 @@ export class OrbitalRenderer3D {
   private pinMaterial: THREE.MeshPhysicalMaterial;
   private brassMat: THREE.MeshPhysicalMaterial;
   private railGraphiteMat: THREE.MeshPhysicalMaterial;
-  private railTroughMat: THREE.MeshPhysicalMaterial;
 
   // Impact FX pools
   private impactRings: ImpactRing[] = [];
@@ -441,18 +397,12 @@ export class OrbitalRenderer3D {
     });
 
     this.railGraphiteMat = new THREE.MeshPhysicalMaterial({
-      color: 0x242c36,
-      roughness: 0.28,
-      metalness: 0.82,
-      clearcoat: 0.55,
-      clearcoatRoughness: 0.18,
-      envMapIntensity: 0.9,
-    });
-
-    this.railTroughMat = new THREE.MeshPhysicalMaterial({
-      color: 0x161c24,
-      roughness: 0.5,
-      metalness: 0.65,
+      color: 0x1c222b,
+      roughness: 0.2,
+      metalness: 0.92,
+      clearcoat: 0.85,
+      clearcoatRoughness: 0.12,
+      envMapIntensity: 1.15,
     });
 
     // Impact ring pool
@@ -1217,15 +1167,17 @@ export class OrbitalRenderer3D {
       if (!entry || entry.sig !== sig) {
         if (entry) {
           this.scene.remove(entry.group);
+          this.scene.remove(entry.hitSprite);
+          this.scene.remove(entry.exitSprite);
           entry.outerMesh.geometry.dispose();
           entry.innerMesh.geometry.dispose();
-          entry.troughMesh.geometry.dispose();
           entry.outerStrip.geometry.dispose();
           entry.innerStrip.geometry.dispose();
           (entry.outerMesh.material as THREE.Material).dispose();
           (entry.outerStrip.material as THREE.Material).dispose();
           (entry.innerStrip.material as THREE.Material).dispose();
           (entry.travelSprite.material as THREE.Material).dispose();
+          (entry.hitSprite.material as THREE.Material).dispose();
           (entry.exitSprite.material as THREE.Material).dispose();
         }
         // Build geometries in local origin (0,0) and position group at (rail.x, -rail.y, 0) rotated by -rail.rotation
@@ -1237,28 +1189,39 @@ export class OrbitalRenderer3D {
         };
         const localGeom = buildRailGeometry(localRail);
         const worldGeom = buildRailGeometry(rail);
+        const rodRadius = localGeom.wallThickness * 0.5;
 
         const group = new THREE.Group();
         const wallMat = this.railGraphiteMat.clone();
         const outerMesh = new THREE.Mesh(
-          buildRibbonWallGeometry(localGeom.outerWall, localGeom.wallThickness * 0.5, 16),
+          buildRodTube(localGeom.outerWall, rodRadius),
           wallMat
         );
         outerMesh.castShadow = true;
         outerMesh.receiveShadow = true;
 
         const innerMesh = new THREE.Mesh(
-          buildRibbonWallGeometry(localGeom.innerWall, localGeom.wallThickness * 0.5, 16),
+          buildRodTube(localGeom.innerWall, rodRadius),
           wallMat
         );
         innerMesh.castShadow = true;
         innerMesh.receiveShadow = true;
 
-        const troughMesh = new THREE.Mesh(
-          buildTroughGeometry(localGeom.outerWall, localGeom.innerWall),
-          this.railTroughMat
-        );
-        troughMesh.receiveShadow = true;
+        // Rounded hemispherical end-caps on all four rod endpoints (open space between the two rods)
+        const capPoints = [
+          localGeom.outerWall[0],
+          localGeom.outerWall[localGeom.outerWall.length - 1],
+          localGeom.innerWall[0],
+          localGeom.innerWall[localGeom.innerWall.length - 1],
+        ];
+        const caps = capPoints.map((pt) => {
+          const cap = new THREE.Mesh(this.sharedRailCapGeo, wallMat);
+          cap.position.set(pt.x, -pt.y, 0);
+          cap.scale.setScalar(rodRadius);
+          cap.castShadow = true;
+          cap.receiveShadow = true;
+          return cap;
+        });
 
         const stripMatOuter = new THREE.MeshBasicMaterial({
           color: 0x38e2ff,
@@ -1267,12 +1230,13 @@ export class OrbitalRenderer3D {
         });
         const stripMatInner = stripMatOuter.clone();
 
+        const stripZ = rodRadius + 0.35;
         const outerStrip = new THREE.Mesh(
-          buildStripTube(localGeom.outerWall, 9.6),
+          buildStripTube(localGeom.outerWall, stripZ),
           stripMatOuter
         );
         const innerStrip = new THREE.Mesh(
-          buildStripTube(localGeom.innerWall, 9.6),
+          buildStripTube(localGeom.innerWall, stripZ),
           stripMatInner
         );
 
@@ -1288,6 +1252,18 @@ export class OrbitalRenderer3D {
         );
         travelSprite.scale.set(42, 42, 1);
 
+        const hitSprite = new THREE.Sprite(
+          new THREE.SpriteMaterial({
+            map: this.softDot,
+            color: 0x9cf8ff,
+            transparent: true,
+            opacity: 0,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+          })
+        );
+        hitSprite.scale.set(24, 24, 1);
+
         const exitSprite = new THREE.Sprite(
           new THREE.SpriteMaterial({
             map: this.softDot,
@@ -1300,18 +1276,20 @@ export class OrbitalRenderer3D {
         );
         exitSprite.scale.set(48, 48, 1);
 
-        group.add(troughMesh, outerMesh, innerMesh, outerStrip, innerStrip, travelSprite);
+        group.add(outerMesh, innerMesh, ...caps, outerStrip, innerStrip, travelSprite);
         this.scene.add(group);
+        this.scene.add(hitSprite);
         this.scene.add(exitSprite);
 
         entry = {
           group,
           outerMesh,
           innerMesh,
-          troughMesh,
+          caps,
           outerStrip,
           innerStrip,
           travelSprite,
+          hitSprite,
           exitSprite,
           sig,
           geom: worldGeom,
@@ -1343,6 +1321,17 @@ export class OrbitalRenderer3D {
         entry.travelSprite.visible = false;
       }
 
+      const hitF = rail.hitFlash ?? 0;
+      if (hitF > 0.04 && rail.hitX !== undefined && rail.hitY !== undefined) {
+        entry.hitSprite.visible = true;
+        entry.hitSprite.position.set(rail.hitX, -rail.hitY, 6);
+        const hs = 18 + (1 - hitF) * 18;
+        entry.hitSprite.scale.set(hs, hs, 1);
+        (entry.hitSprite.material as THREE.SpriteMaterial).opacity = hitF * 0.82;
+      } else {
+        entry.hitSprite.visible = false;
+      }
+
       const exP = rail.exitPulse ?? 0;
       if (exP > 0.04 && rail.exitX !== undefined && rail.exitY !== undefined) {
         entry.exitSprite.visible = true;
@@ -1358,16 +1347,17 @@ export class OrbitalRenderer3D {
     for (const [id, entry] of this.railMeshes.entries()) {
       if (!alive.has(id)) {
         this.scene.remove(entry.group);
+        this.scene.remove(entry.hitSprite);
         this.scene.remove(entry.exitSprite);
         entry.outerMesh.geometry.dispose();
         entry.innerMesh.geometry.dispose();
-        entry.troughMesh.geometry.dispose();
         entry.outerStrip.geometry.dispose();
         entry.innerStrip.geometry.dispose();
         (entry.outerMesh.material as THREE.Material).dispose();
         (entry.outerStrip.material as THREE.Material).dispose();
         (entry.innerStrip.material as THREE.Material).dispose();
         (entry.travelSprite.material as THREE.Material).dispose();
+        (entry.hitSprite.material as THREE.Material).dispose();
         (entry.exitSprite.material as THREE.Material).dispose();
         this.railMeshes.delete(id);
       }
@@ -1568,18 +1558,23 @@ export class OrbitalRenderer3D {
     this.sharedPinGeo.dispose();
     this.sharedPoolGeo.dispose();
     this.sharedRingGeo.dispose();
+    this.sharedRailCapGeo.dispose();
     this.marbleMat.dispose();
     this.silentMaterial.dispose();
     this.pinMaterial.dispose();
     this.railGraphiteMat.dispose();
-    this.railTroughMat.dispose();
     Object.values(this.barMaterials).forEach((m) => m.dispose());
     for (const entry of this.railMeshes.values()) {
       entry.outerMesh.geometry.dispose();
       entry.innerMesh.geometry.dispose();
-      entry.troughMesh.geometry.dispose();
       entry.outerStrip.geometry.dispose();
       entry.innerStrip.geometry.dispose();
+      (entry.outerMesh.material as THREE.Material).dispose();
+      (entry.outerStrip.material as THREE.Material).dispose();
+      (entry.innerStrip.material as THREE.Material).dispose();
+      (entry.travelSprite.material as THREE.Material).dispose();
+      (entry.hitSprite.material as THREE.Material).dispose();
+      (entry.exitSprite.material as THREE.Material).dispose();
     }
     for (const r of this.impactRings) r.mat.dispose();
     this.sparkPoints.geometry.dispose();

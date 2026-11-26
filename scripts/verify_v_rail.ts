@@ -43,9 +43,71 @@ function makeTestWorld(rail: TransferRailPiece): WorldState {
   };
 }
 
-console.log("=== Verifying V-SHAPED TRANSFER RAIL SYSTEM in 120Hz stepFixed ===");
+console.log("=== Verifying TWIN 3D RAIL SYSTEM (Straight + V-Shaped) in 120Hz stepFixed ===");
 
-// 1. Test varied entry speeds and slight angle offsets
+// 0. Test Straight Twin Rail across rotations, gaps, and speeds
+for (const rotDeg of [15, 25, 35]) {
+  for (const gap of [22, 26, 30]) {
+    const rail = makeBaseRail({
+      id: "straight_test",
+      variant: "straight",
+      rotation: (rotDeg * Math.PI) / 180,
+      armLength: 110,
+      channelWidth: gap,
+      boost: 0.14,
+    });
+    const geom = buildRailGeometry(rail);
+    const world = makeTestWorld(rail);
+    world.marbles.push({
+      id: 1,
+      x: geom.entryPoint.x - geom.entryTangent.x * 16,
+      y: geom.entryPoint.y - geom.entryTangent.y * 16,
+      prevX: geom.entryPoint.x,
+      prevY: geom.entryPoint.y,
+      vx: geom.entryTangent.x * 130,
+      vy: geom.entryTangent.y * 130,
+      radius: MARBLE_RADIUS,
+      age: 0,
+      trail: [],
+      cooldowns: {},
+      splitHistory: {},
+      squash: 0,
+      squashAngle: 0,
+    });
+
+    let entered = false;
+    let exited = false;
+    let exitDot = 0;
+    let maxPen = 0;
+
+    for (let tick = 0; tick < 280; tick++) {
+      const evs = stepFixed(world, true);
+      for (const ev of evs) {
+        if (ev.type === "rail_enter" && ev.railId === "straight_test") entered = true;
+        if (ev.type === "rail_exit" && ev.railId === "straight_test") {
+          exited = true;
+          const sp = Math.hypot(ev.vx, ev.vy) || 1;
+          exitDot = (ev.vx * geom.exitTangent.x + ev.vy * geom.exitTangent.y) / sp;
+        }
+      }
+      const m = world.marbles[0];
+      if (m && entered && !exited) {
+        const proj = projectPointOntoRail(geom, m.x, m.y);
+        if (proj.t > 0.08 && proj.t < 0.92) {
+          maxPen = Math.max(maxPen, proj.dist - (geom.halfChannel + 2));
+        }
+      }
+    }
+
+    assert.equal(entered, true, `Straight Twin Rail missed entry (rot=${rotDeg}, gap=${gap})`);
+    assert.equal(exited, true, `Straight Twin Rail got stuck (rot=${rotDeg}, gap=${gap})`);
+    assert.ok(maxPen < 2.0, `Marble escaped/penetrated straight rod by ${maxPen.toFixed(2)}px`);
+    assert.ok(exitDot > 0.85, `Straight Twin Rail exit diverged (dot=${exitDot.toFixed(2)})`);
+  }
+}
+console.log("[PASS] Straight Twin Rail verified across rotations (15°, 25°, 35°) & gaps (22, 26, 30px)");
+
+// 1. Test varied entry speeds and slight angle offsets for V-Shaped Twin Rail
 for (const entryVy of [120, 220, 340]) {
   for (const offsetVx of [-25, 0, 25]) {
     const rail = makeBaseRail({ boost: 0.2 });
@@ -196,21 +258,29 @@ console.log("[PASS] Multiple rotations (-25°, 0°, 15°, 30°) verified cleanly
 }
 console.log("[PASS] 3 concurrent marbles traversed V-Rail cleanly");
 
-// 4. End-to-end showcase preset: Emitter -> V-Rail -> Musical Instruments
+// 4. End-to-end showcase preset: Emitter -> Straight Twin Rail -> V-Shaped Twin Rail -> Musical Instruments
 {
   const preset = SANDBOX_PRESETS.find((p) => p.id === "v-rail-transfer");
   assert.ok(preset, "v-rail-transfer preset missing!");
   const world = createWorldFromPreset(preset);
+  const enteredIds = new Set<string>();
+  const exitedIds = new Set<string>();
   let railEnters = 0;
   let railExits = 0;
   let barHits = 0;
   const hitBarIds = new Set<string>();
 
-  for (let tick = 0; tick < 520; tick++) {
+  for (let tick = 0; tick < 650; tick++) {
     const evs = stepFixed(world, true);
     for (const ev of evs) {
-      if (ev.type === "rail_enter") railEnters++;
-      if (ev.type === "rail_exit") railExits++;
+      if (ev.type === "rail_enter") {
+        railEnters++;
+        enteredIds.add(ev.railId);
+      }
+      if (ev.type === "rail_exit") {
+        railExits++;
+        exitedIds.add(ev.railId);
+      }
       if (ev.type === "bar_hit") {
         barHits++;
         hitBarIds.add(ev.barId);
@@ -219,10 +289,13 @@ console.log("[PASS] 3 concurrent marbles traversed V-Rail cleanly");
   }
 
   console.log(
-    `[Preset v-rail-transfer] railEnters=${railEnters}, railExits=${railExits}, barHits=${barHits}, barsHit=[${[...hitBarIds].join(",")}]`
+    `[Preset v-rail-transfer] entered=[${[...enteredIds].join(",")}], exited=[${[...exitedIds].join(",")}], barHits=${barHits}, barsHit=[${[...hitBarIds].join(",")}]`
   );
-  assert.ok(railEnters >= 1, "Showcase preset marble never entered V-Rail!");
-  assert.ok(railExits >= 1, "Showcase preset marble never exited V-Rail!");
+  assert.ok(enteredIds.has("rail_straight"), "Showcase marble never entered Straight Twin Rail!");
+  assert.ok(exitedIds.has("rail_straight"), "Showcase marble never exited Straight Twin Rail!");
+  assert.ok(enteredIds.has("rail_v"), "Showcase marble never entered V-Shaped Twin Rail!");
+  assert.ok(exitedIds.has("rail_v"), "Showcase marble never exited V-Shaped Twin Rail!");
+  assert.ok(railEnters >= 2 && railExits >= 2, "Expected both rails traversed");
   assert.ok(hitBarIds.size >= 2, `Expected at least 2 downstream musical bars hit, got ${hitBarIds.size}`);
 }
-console.log("ALL V-SHAPED TRANSFER RAIL VERIFICATION TESTS PASSED!");
+console.log("ALL TWIN 3D RAIL SYSTEM VERIFICATION TESTS PASSED!");

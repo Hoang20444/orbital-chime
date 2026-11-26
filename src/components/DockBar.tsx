@@ -78,26 +78,31 @@ const PhysicsGlyph: React.FC<{ tool: ToolType }> = ({ tool }) => {
   if (tool === "rail") {
     return (
       <svg
-        width="14"
-        height="12"
-        viewBox="0 0 14 12"
+        width="16"
+        height="13"
+        viewBox="0 0 16 13"
         style={{ display: "inline-block", verticalAlign: "middle" }}
       >
         <path
-          d="M1.5 2 L7 9.5 L12.5 2"
+          d="M1.5 2 Q8 9.2 14.5 2"
           fill="none"
-          stroke="#242C36"
-          strokeWidth="3.2"
+          stroke="#1C232B"
+          strokeWidth="2.2"
           strokeLinecap="round"
-          strokeLinejoin="round"
         />
         <path
-          d="M1.5 2 L7 9.5 L12.5 2"
+          d="M1.5 5.8 Q8 13 14.5 5.8"
+          fill="none"
+          stroke="#1C232B"
+          strokeWidth="2.2"
+          strokeLinecap="round"
+        />
+        <path
+          d="M1.5 2 Q8 9.2 14.5 2 M1.5 5.8 Q8 13 14.5 5.8"
           fill="none"
           stroke="#38E2FF"
-          strokeWidth="1.2"
+          strokeWidth="0.7"
           strokeLinecap="round"
-          strokeLinejoin="round"
         />
       </svg>
     );

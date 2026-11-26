@@ -66,7 +66,7 @@ function resolveMarbleInRail(
   rail: TransferRailPiece,
   geom: RailGeometry,
   dt: number
-): { inChannel: boolean; t: number } {
+): { inChannel: boolean; t: number; hitPoint?: Vec2 } {
   const pad = body.radius + geom.wallThickness + 16;
   if (
     body.x < geom.bounds.minX - pad ||
@@ -79,13 +79,15 @@ function resolveMarbleInRail(
 
   const minDist = body.radius + geom.wallThickness * 0.5;
   const minDistSq = minDist * minDist;
+  let hitPoint: Vec2 | undefined;
+  let maxImpact = 22;
 
   // Two passes stabilize corner & double-wall containment cleanly at all speeds
   for (let pass = 0; pass < 2; pass++) {
-    for (const wall of [geom.outerWall, geom.innerWall]) {
-      for (let i = 0; i < wall.length - 1; i++) {
-        const a = wall[i];
-        const b = wall[i + 1];
+    for (const rod of [geom.outerWall, geom.innerWall]) {
+      for (let i = 0; i < rod.length - 1; i++) {
+        const a = rod[i];
+        const b = rod[i + 1];
         const { cx, cy } = closestPointOnSegment(body.x, body.y, a.x, a.y, b.x, b.y);
         const dx = body.x - cx;
         const dy = body.y - cy;
@@ -110,7 +112,12 @@ function resolveMarbleInRail(
 
           const vn = body.vx * nx + body.vy * ny;
           if (vn < 0) {
-            // Low normal restitution prevents bouncing/chatter while gliding along the curve
+            const impact = -vn;
+            if (impact > maxImpact) {
+              maxImpact = impact;
+              hitPoint = { x: cx, y: cy };
+            }
+            // Low normal restitution prevents bouncing/chatter while gliding along the rods
             const wallRestitution = 0.12;
             body.vx -= (1 + wallRestitution) * vn * nx;
             body.vy -= (1 + wallRestitution) * vn * ny;
@@ -137,7 +144,7 @@ function resolveMarbleInRail(
     }
   }
 
-  return { inChannel, t: proj.t };
+  return { inChannel, t: proj.t, hitPoint };
 }
 
 export function stepFixed(world: WorldState, isPlaying: boolean): PhysicsEvent[] {
@@ -180,6 +187,9 @@ export function stepFixed(world: WorldState, isPlaying: boolean): PhysicsEvent[]
     }
     if (rail.exitPulse && rail.exitPulse > 0) {
       rail.exitPulse = Math.max(0, rail.exitPulse - FIXED_DT * 3.2);
+    }
+    if (rail.hitFlash && rail.hitFlash > 0) {
+      rail.hitFlash = Math.max(0, rail.hitFlash - FIXED_DT * 4.5);
     }
   }
   const railGeoms = rails.map((r) => ({ rail: r, geom: buildRailGeometry(r) }));
@@ -396,6 +406,11 @@ export function stepFixed(world: WorldState, isPlaying: boolean): PhysicsEvent[]
       for (const { rail, geom } of railGeoms) {
         const res = resolveMarbleInRail(m, rail, geom, subDt);
         clampSpeed(m);
+        if (res.hitPoint) {
+          rail.hitFlash = 1;
+          rail.hitX = res.hitPoint.x;
+          rail.hitY = res.hitPoint.y;
+        }
         if (res.inChannel) {
           if (m.activeRailId !== rail.id) {
             m.activeRailId = rail.id;

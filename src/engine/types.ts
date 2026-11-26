@@ -14,7 +14,7 @@ export type ScaleId =
 
 export type ToolType = MaterialType | "bumper" | "splitter" | "emitter" | "rail";
 
-export type RailVariant = "v" | "u" | "s" | "launch";
+export type RailVariant = "straight" | "v" | "u" | "s" | "launch";
 
 export interface TransferRailPiece {
   id: string;
@@ -36,6 +36,9 @@ export interface TransferRailPiece {
   exitPulse?: number;
   exitX?: number;
   exitY?: number;
+  hitFlash?: number;
+  hitX?: number;
+  hitY?: number;
 }
 
 export interface MaterialSpec {
@@ -273,6 +276,9 @@ export interface PresetDef {
   bumpers: Array<Omit<BumperPiece, "pulse">>;
   splitters: Array<Omit<SplitterPiece, "pulse">>;
   rails?: Array<
-    Omit<TransferRailPiece, "activeGlow" | "pulseT" | "exitPulse" | "exitX" | "exitY">
+    Omit<
+      TransferRailPiece,
+      "activeGlow" | "pulseT" | "exitPulse" | "exitX" | "exitY" | "hitFlash" | "hitX" | "hitY"
+    >
   >;
 }

@@ -107,44 +107,36 @@ function drawTransferRail2D(
   const glow = rail.activeGlow ?? 0;
 
   ctx.save();
-  // Soft shadow underneath the V-rail trough
-  ctx.save();
-  ctx.translate(2.5, 4.5);
-  ctx.beginPath();
-  ctx.moveTo(geom.outerWall[0].x, geom.outerWall[0].y);
-  for (let i = 1; i < geom.outerWall.length; i++) {
-    ctx.lineTo(geom.outerWall[i].x, geom.outerWall[i].y);
-  }
-  for (let i = geom.innerWall.length - 1; i >= 0; i--) {
-    ctx.lineTo(geom.innerWall[i].x, geom.innerWall[i].y);
-  }
-  ctx.closePath();
-  ctx.fillStyle = "rgba(22, 28, 34, 0.16)";
-  ctx.fill();
-  ctx.restore();
-
-  // Dark recessed metallic trough base
-  ctx.beginPath();
-  ctx.moveTo(geom.outerWall[0].x, geom.outerWall[0].y);
-  for (let i = 1; i < geom.outerWall.length; i++) {
-    ctx.lineTo(geom.outerWall[i].x, geom.outerWall[i].y);
-  }
-  for (let i = geom.innerWall.length - 1; i >= 0; i--) {
-    ctx.lineTo(geom.innerWall[i].x, geom.innerWall[i].y);
-  }
-  ctx.closePath();
-  ctx.fillStyle = "rgba(24, 30, 38, 0.86)";
-  ctx.fill();
-
-  // Beveled graphite guiding walls
-  for (const wall of [geom.outerWall, geom.innerWall]) {
+  // EXACTLY TWO separate parallel metallic cylindrical rods (ZERO bottom trough / tube)
+  for (const rod of [geom.outerWall, geom.innerWall]) {
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
-    ctx.strokeStyle = isSelected || isHovered ? "#2E3A47" : "#222A33";
-    ctx.lineWidth = geom.wallThickness + 2.2;
+
+    // Individual soft shadow under each rod
+    ctx.save();
+    ctx.translate(2.2, 4.2);
+    ctx.strokeStyle = "rgba(22, 28, 34, 0.16)";
+    ctx.lineWidth = geom.wallThickness + 1.2;
     ctx.beginPath();
-    ctx.moveTo(wall[0].x, wall[0].y);
-    for (let i = 1; i < wall.length; i++) ctx.lineTo(wall[i].x, wall[i].y);
+    ctx.moveTo(rod[0].x, rod[0].y);
+    for (let i = 1; i < rod.length; i++) ctx.lineTo(rod[i].x, rod[i].y);
+    ctx.stroke();
+    ctx.restore();
+
+    // Dark graphite / black chrome metallic rod body
+    ctx.strokeStyle = isSelected || isHovered ? "#2A3542" : "#1C232B";
+    ctx.lineWidth = geom.wallThickness;
+    ctx.beginPath();
+    ctx.moveTo(rod[0].x, rod[0].y);
+    for (let i = 1; i < rod.length; i++) ctx.lineTo(rod[i].x, rod[i].y);
+    ctx.stroke();
+
+    // Subtle specular metallic sheen along rod center
+    ctx.strokeStyle = "rgba(185, 205, 224, 0.28)";
+    ctx.lineWidth = 2.2;
+    ctx.beginPath();
+    ctx.moveTo(rod[0].x, rod[0].y);
+    for (let i = 1; i < rod.length; i++) ctx.lineTo(rod[i].x, rod[i].y);
     ctx.stroke();
 
     // Thin cyan luminous strip
@@ -153,34 +145,36 @@ function drawTransferRail2D(
         ? `rgba(76, 236, 255, ${(0.72 + glow * 0.28).toFixed(3)})`
         : isSelected
           ? "rgba(56, 226, 255, 0.9)"
-          : "rgba(56, 226, 255, 0.58)";
-    ctx.lineWidth = 1.6;
+          : "rgba(56, 226, 255, 0.56)";
+    ctx.lineWidth = 1.4;
     ctx.beginPath();
-    ctx.moveTo(wall[0].x, wall[0].y);
-    for (let i = 1; i < wall.length; i++) ctx.lineTo(wall[i].x, wall[i].y);
+    ctx.moveTo(rod[0].x, rod[0].y);
+    for (let i = 1; i < rod.length; i++) ctx.lineTo(rod[i].x, rod[i].y);
     ctx.stroke();
   }
 
-  // Traveling cyan energy pulse along rail centerline
-  if (glow > 0.04) {
-    const pt = sampleRailCenter(geom, rail.pulseT ?? 0.5);
-    const rg = ctx.createRadialGradient(pt.x, pt.y, 1, pt.x, pt.y, 18);
-    rg.addColorStop(0, `rgba(120, 245, 255, ${(glow * 0.85).toFixed(3)})`);
-    rg.addColorStop(1, "rgba(56, 226, 255, 0)");
-    ctx.fillStyle = rg;
+  // Subtle collision highlight on rod contact
+  const flash = rail.hitFlash ?? 0;
+  if (flash > 0.04 && rail.hitX !== undefined && rail.hitY !== undefined) {
+    const hg = ctx.createRadialGradient(rail.hitX, rail.hitY, 1, rail.hitX, rail.hitY, 14);
+    hg.addColorStop(0, `rgba(145, 248, 255, ${(flash * 0.85).toFixed(3)})`);
+    hg.addColorStop(1, "rgba(56, 226, 255, 0)");
+    ctx.fillStyle = hg;
     ctx.beginPath();
-    ctx.arc(pt.x, pt.y, 18, 0, Math.PI * 2);
+    ctx.arc(rail.hitX, rail.hitY, 14, 0, Math.PI * 2);
     ctx.fill();
   }
 
-  // Exit pulse ring
-  const exP = rail.exitPulse ?? 0;
-  if (exP > 0.04 && rail.exitX !== undefined && rail.exitY !== undefined) {
-    ctx.strokeStyle = `rgba(76, 238, 255, ${(exP * 0.78).toFixed(3)})`;
-    ctx.lineWidth = 2;
+  // Subtle traveling cyan highlight along centerline while marble is between the twin rails
+  if (glow > 0.04) {
+    const pt = sampleRailCenter(geom, rail.pulseT ?? 0.5);
+    const rg = ctx.createRadialGradient(pt.x, pt.y, 1, pt.x, pt.y, 15);
+    rg.addColorStop(0, `rgba(110, 240, 255, ${(glow * 0.55).toFixed(3)})`);
+    rg.addColorStop(1, "rgba(56, 226, 255, 0)");
+    ctx.fillStyle = rg;
     ctx.beginPath();
-    ctx.arc(rail.exitX, rail.exitY, 8 + (1 - exP) * 20, 0, Math.PI * 2);
-    ctx.stroke();
+    ctx.arc(pt.x, pt.y, 15, 0, Math.PI * 2);
+    ctx.fill();
   }
 
   if (isSelected) {

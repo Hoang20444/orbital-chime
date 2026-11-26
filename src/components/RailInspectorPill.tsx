@@ -26,19 +26,50 @@ export const RailInspectorPill: React.FC<RailInspectorPillProps> = ({
         display: "flex",
         alignItems: "center",
         flexWrap: "wrap",
-        gap: 10,
+        gap: 9,
         padding: "6px 12px",
-        backgroundColor: "rgba(30, 36, 44, 0.94)",
+        backgroundColor: "rgba(26, 32, 40, 0.94)",
         color: "#F2F5F7",
-        border: "1px solid rgba(56, 226, 255, 0.42)",
+        border: "1px solid rgba(56, 226, 255, 0.44)",
         borderRadius: 999,
-        boxShadow: "0 6px 20px rgba(15, 22, 28, 0.22)",
+        boxShadow: "0 6px 20px rgba(15, 22, 28, 0.24)",
         fontSize: 11.5,
       }}
     >
       <span style={{ fontWeight: 700, color: "#38E2FF", letterSpacing: "0.02em" }}>
-        V-Rail
+        Twin Rail
       </span>
+
+      <div style={{ display: "flex", gap: 4 }}>
+        {(["straight", "v"] as const).map((v) => {
+          const active = rail.variant === v;
+          return (
+            <button
+              key={v}
+              type="button"
+              onClick={() => onUpdateRail({ variant: v })}
+              style={{
+                padding: "2px 7px",
+                borderRadius: 999,
+                border: "1px solid rgba(56, 226, 255, 0.5)",
+                background: active ? "#38E2FF" : "transparent",
+                color: active ? "#121820" : "#CFE9F2",
+                fontWeight: 700,
+                fontSize: 10.5,
+                cursor: "pointer",
+              }}
+            >
+              {v === "straight"
+                ? locale === "vi"
+                  ? "Thẳng"
+                  : "Straight"
+                : locale === "vi"
+                  ? "Chữ V"
+                  : "V-Shape"}
+            </button>
+          );
+        })}
+      </div>
 
       <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
         <span style={{ opacity: 0.8 }}>{locale === "vi" ? "Xoay" : "Rot"}</span>
@@ -51,15 +82,15 @@ export const RailInspectorPill: React.FC<RailInspectorPillProps> = ({
           onChange={(e) =>
             onUpdateRail({ rotation: (Number(e.target.value) * Math.PI) / 180 })
           }
-          style={{ width: 62, accentColor: "#38E2FF" }}
+          style={{ width: 56, accentColor: "#38E2FF" }}
         />
-        <span style={{ width: 32, fontFamily: "var(--font-mono)", fontSize: 10.5 }}>
+        <span style={{ width: 30, fontFamily: "var(--font-mono)", fontSize: 10.5 }}>
           {rotDeg}°
         </span>
       </label>
 
       <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
-        <span style={{ opacity: 0.8 }}>{locale === "vi" ? "Dài" : "Size"}</span>
+        <span style={{ opacity: 0.8 }}>{locale === "vi" ? "Dài" : "Len"}</span>
         <input
           type="range"
           min={65}
@@ -67,48 +98,52 @@ export const RailInspectorPill: React.FC<RailInspectorPillProps> = ({
           step={5}
           value={Math.round(rail.armLength)}
           onChange={(e) => onUpdateRail({ armLength: Number(e.target.value) })}
-          style={{ width: 58, accentColor: "#38E2FF" }}
+          style={{ width: 52, accentColor: "#38E2FF" }}
         />
       </label>
 
       <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
-        <span style={{ opacity: 0.8 }}>{locale === "vi" ? "Góc mở" : "Angle"}</span>
+        <span style={{ opacity: 0.8 }}>{locale === "vi" ? "Khe" : "Gap"}</span>
         <input
           type="range"
-          min={50}
-          max={140}
-          step={2}
-          value={Math.round(rail.openingAngle)}
-          onChange={(e) => onUpdateRail({ openingAngle: Number(e.target.value) })}
-          style={{ width: 54, accentColor: "#38E2FF" }}
+          min={20}
+          max={36}
+          step={1}
+          value={Math.round(rail.channelWidth)}
+          onChange={(e) => onUpdateRail({ channelWidth: Number(e.target.value) })}
+          style={{ width: 46, accentColor: "#38E2FF" }}
         />
       </label>
 
-      <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
-        <span style={{ opacity: 0.8 }}>{locale === "vi" ? "Cong" : "Curve"}</span>
-        <input
-          type="range"
-          min={25}
-          max={85}
-          step={5}
-          value={Math.round(rail.curvature * 100)}
-          onChange={(e) => onUpdateRail({ curvature: Number(e.target.value) / 100 })}
-          style={{ width: 48, accentColor: "#38E2FF" }}
-        />
-      </label>
+      {rail.variant === "v" && (
+        <>
+          <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            <span style={{ opacity: 0.8 }}>{locale === "vi" ? "Góc" : "Angle"}</span>
+            <input
+              type="range"
+              min={50}
+              max={140}
+              step={2}
+              value={Math.round(rail.openingAngle)}
+              onChange={(e) => onUpdateRail({ openingAngle: Number(e.target.value) })}
+              style={{ width: 48, accentColor: "#38E2FF" }}
+            />
+          </label>
 
-      <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
-        <span style={{ opacity: 0.8 }}>{locale === "vi" ? "Dốc" : "Slope"}</span>
-        <input
-          type="range"
-          min={-40}
-          max={40}
-          step={5}
-          value={Math.round(rail.slopeBias * 100)}
-          onChange={(e) => onUpdateRail({ slopeBias: Number(e.target.value) / 100 })}
-          style={{ width: 48, accentColor: "#38E2FF" }}
-        />
-      </label>
+          <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            <span style={{ opacity: 0.8 }}>{locale === "vi" ? "Cong" : "Curve"}</span>
+            <input
+              type="range"
+              min={25}
+              max={85}
+              step={5}
+              value={Math.round(rail.curvature * 100)}
+              onChange={(e) => onUpdateRail({ curvature: Number(e.target.value) / 100 })}
+              style={{ width: 44, accentColor: "#38E2FF" }}
+            />
+          </label>
+        </>
+      )}
 
       <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
         <span style={{ opacity: 0.8 }}>{locale === "vi" ? "Đẩy" : "Boost"}</span>
@@ -119,7 +154,7 @@ export const RailInspectorPill: React.FC<RailInspectorPillProps> = ({
           step={5}
           value={Math.round(rail.boost * 100)}
           onChange={(e) => onUpdateRail({ boost: Number(e.target.value) / 100 })}
-          style={{ width: 48, accentColor: "#38E2FF" }}
+          style={{ width: 44, accentColor: "#38E2FF" }}
         />
       </label>
 
@@ -138,7 +173,7 @@ export const RailInspectorPill: React.FC<RailInspectorPillProps> = ({
         }}
         title={locale === "vi" ? "Đảo chiều vào/ra" : "Flip entry & exit direction"}
       >
-        ⇄ {locale === "vi" ? "Đảo chiều" : "Flip"}
+        ⇄ {locale === "vi" ? "Đảo" : "Flip"}
       </button>
     </div>
   );
