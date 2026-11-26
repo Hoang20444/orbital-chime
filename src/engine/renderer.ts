@@ -8,9 +8,16 @@ import type {
   WorldState,
 } from "./types.ts";
 
+export interface CameraState {
+  zoom: number;
+  focusX: number;
+  focusY: number;
+}
+
 export interface ViewportTransform {
   cssWidth: number;
   cssHeight: number;
+  baseScale: number;
   scale: number;
   offsetX: number;
   offsetY: number;
@@ -24,14 +31,20 @@ export function computeViewport(
   cssWidth: number,
   cssHeight: number,
   topMargin: number,
-  bottomMargin: number
+  bottomMargin: number,
+  camera?: CameraState
 ): ViewportTransform {
   const padX = cssWidth < 720 ? 8 : 12;
   const availW = Math.max(200, cssWidth - padX * 2);
   const availH = Math.max(200, cssHeight - topMargin - bottomMargin);
-  const scale = Math.min(availW / STAGE_W, availH / STAGE_H);
-  const offsetX = (cssWidth - STAGE_W * scale) * 0.5;
-  const offsetY = topMargin + (availH - STAGE_H * scale) * 0.5;
+  const baseScale = Math.min(availW / STAGE_W, availH / STAGE_H);
+  const zoom = camera ? Math.max(0.45, Math.min(3.5, camera.zoom)) : 1;
+  const scale = baseScale * zoom;
+  const focusX = camera?.focusX ?? STAGE_W * 0.5;
+  const focusY = camera?.focusY ?? STAGE_H * 0.5;
+
+  const offsetX = cssWidth * 0.5 - focusX * scale;
+  const offsetY = topMargin + availH * 0.5 - focusY * scale;
 
   const worldMinX = (padX - offsetX) / scale;
   const worldMaxX = (cssWidth - padX - offsetX) / scale;
@@ -41,6 +54,7 @@ export function computeViewport(
   return {
     cssWidth,
     cssHeight,
+    baseScale,
     scale,
     offsetX,
     offsetY,
@@ -71,6 +85,7 @@ export interface RenderOptions {
   hintOverlay: LevelSolutionHint | null;
   draftBar: Pick<BarPiece, "ax" | "ay" | "bx" | "by" | "material"> | null;
   interpAlpha: number;
+  followedMarbleId?: number | null;
 }
 
 function traceStraightRoundedBar(
@@ -732,6 +747,14 @@ export function renderWorld(
     ctx.fill();
 
     // Marble body
+    if (opts.followedMarbleId === m.id) {
+      ctx.strokeStyle = "rgba(206, 91, 70, 0.55)";
+      ctx.lineWidth = 1.8 / Math.max(0.75, Math.min(1.6, vp.scale));
+      ctx.beginPath();
+      ctx.arc(ix, iy, m.radius + 5.5, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
     ctx.save();
     ctx.translate(ix, iy);
     if (m.squash > 0.02) {

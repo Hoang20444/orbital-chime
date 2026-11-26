@@ -29,6 +29,7 @@ import {
   computeViewport,
   renderWorld,
   screenToWorld,
+  type CameraState,
   type ViewportTransform,
 } from "./engine/renderer.ts";
 import {
@@ -98,6 +99,13 @@ type DragState =
       targetType: "bumper" | "splitter" | "emitter";
       id: string;
       snapshotBefore: EditableSnapshot;
+    }
+  | {
+      kind: "pan_camera";
+      startClientX: number;
+      startClientY: number;
+      origFocusX: number;
+      origFocusY: number;
     };
 
 function clampToWorkspace(
@@ -154,6 +162,8 @@ export const App: React.FC = () => {
   });
   const [scaleId, setScaleId] = useState<ScaleId>(LEVELS[0].scaleId);
   const [bpm, setBpm] = useState(LEVELS[0].bpm);
+  const [followBall, setFollowBall] = useState(false);
+  const [zoomPct, setZoomPct] = useState(100);
   const [, setUiTick] = useState(0);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -163,6 +173,13 @@ export const App: React.FC = () => {
   const dragRef = useRef<DragState>({ kind: "none" });
   const hoveredIdRef = useRef<string | null>(null);
   const vpRef = useRef<ViewportTransform>(computeViewport(1280, 720, 58, 78));
+  const cameraRef = useRef<CameraState>({
+    zoom: 1,
+    focusX: STAGE_W * 0.5,
+    focusY: STAGE_H * 0.5,
+  });
+  const followBallRef = useRef(followBall);
+  const followedMarbleIdRef = useRef<number | null>(null);
   const isPlayingRef = useRef(isPlaying);
   const showHintRef = useRef(showHint);
   const modeRef = useRef(mode);
@@ -170,6 +187,7 @@ export const App: React.FC = () => {
   const selectedIdRef = useRef(selectedId);
   const studioOpenRef = useRef(studioOpen);
 
+  followBallRef.current = followBall;
   isPlayingRef.current = isPlaying;
   showHintRef.current = showHint;
   modeRef.current = mode;
@@ -512,6 +530,20 @@ export const App: React.FC = () => {
         handleResetOrClear();
       } else if (e.key.toLowerCase() === "h" && modeRef.current === "puzzle") {
         setShowHint((v) => !v);
+      } else if (e.key.toLowerCase() === "f") {
+        setFollowBall((v) => !v);
+      } else if (e.key === "0") {
+        setFollowBall(false);
+        followedMarbleIdRef.current = null;
+        cameraRef.current = { zoom: 1, focusX: STAGE_W * 0.5, focusY: STAGE_H * 0.5 };
+        setZoomPct(100);
+      } else if (e.key === "Tab" && followBallRef.current) {
+        const marbles = worldRef.current.marbles;
+        if (marbles.length > 1) {
+          e.preventDefault();
+          const idx = marbles.findIndex((m) => m.id === followedMarbleIdRef.current);
+          followedMarbleIdRef.current = marbles[(idx + 1) % marbles.length].id;
+        }
       } else if (e.key === "1") {
         setActiveTool("marimba");
       } else if (e.key === "2") {
@@ -664,11 +696,40 @@ export const App: React.FC = () => {
 
         const topMargin = rect.width < 760 ? 102 : 56;
         const bottomMargin = rect.width < 760 ? 114 : 78;
+
+        // Follow-ball camera tracking (keeps tracked marble smoothly centered)
+        const cam = cameraRef.current;
+        if (followBallRef.current) {
+          const marbles = world.marbles;
+          const target =
+            marbles.find((m) => m.id === followedMarbleIdRef.current) ??
+            marbles.find((m) => m.y >= -40 && m.y <= STAGE_H + 80) ??
+            marbles[0] ??
+            null;
+          if (target) {
+            followedMarbleIdRef.current = target.id;
+            const alpha = isPlayingRef.current ? accumulator / FIXED_DT : 1;
+            const tx = target.prevX + (target.x - target.prevX) * alpha;
+            const ty = target.prevY + (target.y - target.prevY) * alpha;
+            const k = Math.min(1, rawDt * 12);
+            cam.focusX += (tx - cam.focusX) * k;
+            cam.focusY += (ty - cam.focusY) * k;
+          } else {
+            followedMarbleIdRef.current = null;
+            const fallbackX = world.emitters[0]?.x ?? STAGE_W * 0.5;
+            const fallbackY = world.emitters[0]?.y ?? STAGE_H * 0.5;
+            const k = Math.min(1, rawDt * 5);
+            cam.focusX += (fallbackX - cam.focusX) * k;
+            cam.focusY += (fallbackY - cam.focusY) * k;
+          }
+        }
+
         const vp = computeViewport(
           rect.width,
           rect.height,
           topMargin,
-          bottomMargin
+          bottomMargin,
+          cam
         );
         vpRef.current = vp;
 
@@ -715,6 +776,9 @@ export const App: React.FC = () => {
             hintOverlay,
             draftBar,
             interpAlpha: isPlayingRef.current ? accumulator / FIXED_DT : 1,
+            followedMarbleId: followBallRef.current
+              ? followedMarbleIdRef.current
+              : null,
           });
         }
       }
@@ -784,7 +848,32 @@ export const App: React.FC = () => {
     if (!canvas) return;
     const rect = canvas.getBoundingClientRect();
     const pt = screenToWorld(vpRef.current, e.clientX - rect.left, e.clientY - rect.top);
+
+    // Clicking a marble while Follow mode is active locks camera onto that marble
+    if (followBallRef.current && e.button === 0) {
+      const clickedMarble = worldRef.current.marbles.find(
+        (m) => distSq(pt.x, pt.y, m.x, m.y) <= (m.radius + 14) ** 2
+      );
+      if (clickedMarble) {
+        followedMarbleIdRef.current = clickedMarble.id;
+        return;
+      }
+    }
+
     const hit = hitTestWorld(pt.x, pt.y);
+
+    if (e.button === 1 || (e.button === 2 && !hit)) {
+      if (followBallRef.current) setFollowBall(false);
+      canvas.setPointerCapture(e.pointerId);
+      dragRef.current = {
+        kind: "pan_camera",
+        startClientX: e.clientX,
+        startClientY: e.clientY,
+        origFocusX: cameraRef.current.focusX,
+        origFocusY: cameraRef.current.focusY,
+      };
+      return;
+    }
 
     if (e.button === 2) {
       if (hit) {
@@ -910,6 +999,15 @@ export const App: React.FC = () => {
       return;
     }
 
+    if (drag.kind === "pan_camera") {
+      const s = vpRef.current.scale || 1;
+      cameraRef.current.focusX =
+        drag.origFocusX - (e.clientX - drag.startClientX) / s;
+      cameraRef.current.focusY =
+        drag.origFocusY - (e.clientY - drag.startClientY) / s;
+      return;
+    }
+
     if (drag.kind === "draw_bar") {
       drag.bx = clamped.x;
       drag.by = clamped.y;
@@ -979,6 +1077,11 @@ export const App: React.FC = () => {
 
   const handlePointerUp = () => {
     const drag = dragRef.current;
+    if (drag.kind === "pan_camera") {
+      dragRef.current = { kind: "none" };
+      return;
+    }
+
     if (drag.kind === "draw_bar") {
       const len = Math.hypot(drag.bx - drag.ax, drag.by - drag.ay);
       if (len >= 48) {
@@ -1027,6 +1130,36 @@ export const App: React.FC = () => {
         w.emitters.some((e) => e.id === selectedId))
     );
   }, [selectedId, mode, levelIndex]);
+
+  const handleCanvasWheel = (e: React.WheelEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const localX = e.clientX - rect.left;
+    const localY = e.clientY - rect.top;
+
+    const vp = vpRef.current;
+    const cam = cameraRef.current;
+    const factor = Math.exp(-e.deltaY * 0.0011);
+    const nextZoom = Math.max(0.55, Math.min(3.0, cam.zoom * factor));
+
+    if (!followBallRef.current) {
+      const wx = (localX - vp.offsetX) / vp.scale;
+      const wy = (localY - vp.offsetY) / vp.scale;
+      const nextScale = vp.baseScale * nextZoom;
+      const topMargin = rect.width < 760 ? 102 : 56;
+      const bottomMargin = rect.width < 760 ? 114 : 78;
+      const availH = Math.max(200, rect.height - topMargin - bottomMargin);
+      const centerX = rect.width * 0.5;
+      const centerY = topMargin + availH * 0.5;
+      const nextOffsetX = localX - wx * nextScale;
+      const nextOffsetY = localY - wy * nextScale;
+      cam.focusX = (centerX - nextOffsetX) / nextScale;
+      cam.focusY = (centerY - nextOffsetY) / nextScale;
+    }
+    cam.zoom = nextZoom;
+    setZoomPct(Math.round(nextZoom * 100));
+  };
 
   return (
     <div style={{ position: "relative", width: "100%", height: "100dvh" }}>
@@ -1141,6 +1274,7 @@ export const App: React.FC = () => {
       <canvas
         ref={canvasRef}
         onContextMenu={(e) => e.preventDefault()}
+        onWheel={handleCanvasWheel}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
@@ -1153,6 +1287,95 @@ export const App: React.FC = () => {
           cursor: "crosshair",
         }}
       />
+
+      {/* Camera HUD: Follow Ball & Mouse-Wheel Zoom */}
+      <div
+        style={{
+          position: "fixed",
+          top: 66,
+          right: 14,
+          zIndex: 18,
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+          padding: "5px 8px",
+          backgroundColor: "rgba(247, 248, 245, 0.94)",
+          border: "1px solid var(--border-strong)",
+          borderRadius: 12,
+          boxShadow: "0 4px 14px rgba(28, 35, 33, 0.08)",
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => {
+            synthEngine.unlock();
+            synthEngine.playUiTick();
+            setFollowBall((v) => !v);
+          }}
+          className={`hw-btn ${followBall ? "is-selected" : ""}`}
+          style={{
+            padding: "4px 9px",
+            fontSize: 11.5,
+            fontWeight: 600,
+            display: "flex",
+            alignItems: "center",
+            gap: 5,
+            backgroundColor: followBall ? "#1C2321" : "#FFFFFF",
+            color: followBall ? "#FFFFFF" : "var(--ink)",
+            borderColor: followBall ? "#1C2321" : "var(--border)",
+          }}
+          title={locale === "vi" ? "Theo dõi bóng ở giữa màn hình (Phím F)" : "Follow ball in center (Key F)"}
+        >
+          <span
+            style={{
+              width: 7,
+              height: 7,
+              borderRadius: 999,
+              backgroundColor: followBall ? "#CE5B46" : "var(--slate)",
+              display: "inline-block",
+            }}
+          />
+          <span>{locale === "vi" ? "Theo dõi bóng" : "Follow Ball"}</span>
+        </button>
+
+        {followBall && worldRef.current.marbles.length > 1 && (
+          <button
+            type="button"
+            onClick={() => {
+              const marbles = worldRef.current.marbles;
+              const idx = marbles.findIndex((m) => m.id === followedMarbleIdRef.current);
+              followedMarbleIdRef.current = marbles[(idx + 1) % marbles.length].id;
+              syncUi();
+            }}
+            className="hw-btn"
+            style={{ padding: "4px 7px", fontSize: 11.5, fontWeight: 600 }}
+            title={locale === "vi" ? "Đổi bóng theo dõi (Tab)" : "Next marble (Tab)"}
+          >
+            ↻
+          </button>
+        )}
+
+        <button
+          type="button"
+          onClick={() => {
+            setFollowBall(false);
+            followedMarbleIdRef.current = null;
+            cameraRef.current = { zoom: 1, focusX: STAGE_W * 0.5, focusY: STAGE_H * 0.5 };
+            setZoomPct(100);
+          }}
+          className="hw-btn"
+          style={{
+            padding: "4px 8px",
+            fontSize: 11.5,
+            fontFamily: "var(--font-mono)",
+            fontWeight: 600,
+            color: zoomPct !== 100 ? "#CE5B46" : "var(--slate)",
+          }}
+          title={locale === "vi" ? "Cuộn chuột để zoom · Bấm để đặt lại 100% (Phím 0)" : "Scroll to zoom · Click to reset 100% (Key 0)"}
+        >
+          {zoomPct}%
+        </button>
+      </div>
 
       {winBannerVisible && mode === "puzzle" && (
         <WinBanner
