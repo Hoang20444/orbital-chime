@@ -4,13 +4,14 @@ import type {
   SongHitNote,
   SongPhraseChain,
 } from "../data/marbleSongs.ts";
-import { FIXED_DT, GRAVITY, MARBLE_RADIUS, MAX_SPEED } from "../engine/physics.ts";
+import { FIXED_DT, MARBLE_RADIUS, MAX_SPEED } from "../engine/physics.ts";
 import type { BarPiece, Emitter, WorldState } from "../engine/types.ts";
 import { MATERIALS } from "../theme/tokens.ts";
 
 const SUB_STEPS = 2;
 const SUB_DT = FIXED_DT / SUB_STEPS;
-const DROP_HEIGHT = 68;
+const DROP_HEIGHT = 56;
+export const SONG_GRAVITY = 460;
 
 interface SimState {
   x: number;
@@ -35,7 +36,7 @@ function clampVel(s: SimState): void {
 function stepSubsteps(s: SimState, substeps: number): SimState {
   const out = { ...s };
   for (let i = 0; i < substeps; i++) {
-    out.vy += GRAVITY * SUB_DT;
+    out.vy += SONG_GRAVITY * SUB_DT;
     clampVel(out);
     out.x += out.vx * SUB_DT;
     out.y += out.vy * SUB_DT;
@@ -71,7 +72,7 @@ function solveExactBounce(
 
   const N = substepsAfterBounce;
   const totalTime = N * SUB_DT;
-  const gravDisp = 0.5 * N * (N + 1) * SUB_DT * SUB_DT * GRAVITY;
+  const gravDisp = 0.5 * N * (N + 1) * SUB_DT * SUB_DT * SONG_GRAVITY;
 
   for (let iter = 0; iter < 6; iter++) {
     const vnEstimate = inState.vx * nx + inState.vy * ny;
@@ -221,7 +222,7 @@ export function sculptMarbleSong(
   timbreOverride?: MelodicInstrumentId
 ): WorldState {
   const beatPerTick = (song.bpm / 60) * FIXED_DT;
-  const leadInSec = Math.sqrt((2 * DROP_HEIGHT) / GRAVITY);
+  const leadInSec = Math.sqrt((2 * DROP_HEIGHT) / SONG_GRAVITY);
   const leadInTicks = Math.round(leadInSec / FIXED_DT);
 
   const emitters: Emitter[] = [];
@@ -283,7 +284,7 @@ export function sculptMarbleSong(
         nextX = xs[i + 1];
 
         const dtSec = dtTicks * FIXED_DT;
-        const arcDropBudget = 0.5 * GRAVITY * dtSec * dtSec;
+        const arcDropBudget = 0.5 * SONG_GRAVITY * dtSec * dtSec;
         const dxNext = nextX - xs[i];
         const dxAbs = Math.abs(dxNext);
         const dxPrev = i > 0 ? xs[i] - xs[i - 1] : dxNext;
@@ -300,27 +301,29 @@ export function sculptMarbleSong(
         const durationBonus = dtBeat >= 1.4 ? 20 : dtBeat >= 0.9 ? 10 : 0;
         const isFastNote = dtBeat <= 0.6;
         const roleLen = isFastNote
-          ? Math.min(54, Math.max(46, baseBarLen * 0.85))
-          : note.material === "bass" || note.silent
-            ? Math.max(baseBarLen, 62) + durationBonus * 0.4
-            : baseBarLen + durationBonus + (isZigzagTurn ? 8 : 0);
+          ? Math.min(44, Math.max(40, baseBarLen * 0.78))
+          : note.silent
+            ? Math.min(54, Math.max(44, baseBarLen))
+            : note.material === "bass"
+              ? Math.max(baseBarLen, 56) + durationBonus * 0.35
+              : baseBarLen + durationBonus + (isZigzagTurn ? 8 : 0);
         const spanMin = Math.min(dxAbs, Math.abs(dxPrev));
         const maxSafeLen = isFastNote
-          ? 54
+          ? 44
           : isZigzagTurn
-            ? Math.min(72, Math.max(46, spanMin * 0.75))
+            ? Math.min(64, Math.max(44, spanMin * 0.7))
             : isNextBarTurn
-              ? Math.min(64, Math.max(46, (spanMin - minDist - 22) * 0.95))
-              : Math.min(78, Math.max(46, (spanMin - minDist - 20) * 1.0));
-        halfLen = Math.min(78, Math.max(46, Math.min(roleLen, maxSafeLen))) * 0.5;
+              ? Math.min(58, Math.max(44, (spanMin - minDist - 22) * 0.9))
+              : Math.min(70, Math.max(44, (spanMin - minDist - 20) * 0.94));
+        halfLen = Math.min(70, Math.max(40, Math.min(roleLen, maxSafeLen))) * 0.5;
 
         if (isZigzagTurn) {
           // On a zigzag corner reversal, keep vy_out well below horizontal so the return arc
           // passes cleanly underneath the upper leg's outer bar tip!
           const turnDrop = Math.max(
-            82,
-            Math.ceil(arcDropBudget + 34),
-            Math.min(190, masterNextY - curState.y)
+            78,
+            Math.ceil(arcDropBudget + 30),
+            Math.min(148, masterNextY - curState.y)
           );
           nextY = curState.y + turnDrop;
         } else {
@@ -392,6 +395,7 @@ export function sculptMarbleSong(
 
   return {
     bpm: song.bpm,
+    gravity: SONG_GRAVITY,
     scaleId: song.scaleId,
     bars,
     bumpers: [],

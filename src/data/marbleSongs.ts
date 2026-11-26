@@ -102,9 +102,9 @@ export const MARBLE_SONGS: MarbleSongDef[] = [
         startX: 110,
         maxX: 465,
         startY: 132,
-        stepX: 92,
-        dropPerHit: 30,
-        barLen: 54,
+        stepX: 82,
+        dropPerHit: 28,
+        barLen: 52,
         defaultInstrument: "piano",
         notes: [
           m(0.0, 76, "ceramic"), // E5
@@ -151,9 +151,9 @@ export const MARBLE_SONGS: MarbleSongDef[] = [
         startX: 590,
         maxX: 945,
         startY: 132,
-        stepX: 96,
-        dropPerHit: 30,
-        barLen: 62,
+        stepX: 84,
+        dropPerHit: 28,
+        barLen: 58,
         defaultInstrument: "piano",
         notes: [
           m(4.0, 45, "bass"), // A2
@@ -311,9 +311,9 @@ export const MARBLE_SONGS: MarbleSongDef[] = [
         startX: 110,
         maxX: 465,
         startY: 132,
-        stepX: 92,
-        dropPerHit: 30,
-        barLen: 54,
+        stepX: 82,
+        dropPerHit: 28,
+        barLen: 52,
         defaultInstrument: "musicBox",
         notes: [
           m(0.0, 78, "ceramic"), // F#5
@@ -349,9 +349,9 @@ export const MARBLE_SONGS: MarbleSongDef[] = [
         startX: 590,
         maxX: 945,
         startY: 132,
-        stepX: 96,
-        dropPerHit: 30,
-        barLen: 62,
+        stepX: 84,
+        dropPerHit: 28,
+        barLen: 58,
         defaultInstrument: "bass",
         notes: [
           m(0.0, 50, "bass"),  // D3
@@ -392,9 +392,9 @@ export const MARBLE_SONGS: MarbleSongDef[] = [
         startX: 110,
         maxX: 465,
         startY: 132,
-        stepX: 92,
-        dropPerHit: 30,
-        barLen: 54,
+        stepX: 82,
+        dropPerHit: 28,
+        barLen: 52,
         defaultInstrument: "brass",
         notes: [
           m(0.0, 66, "marimba"), // F#4
@@ -436,9 +436,9 @@ export const MARBLE_SONGS: MarbleSongDef[] = [
         startX: 590,
         maxX: 945,
         startY: 132,
-        stepX: 96,
-        dropPerHit: 30,
-        barLen: 62,
+        stepX: 84,
+        dropPerHit: 28,
+        barLen: 58,
         defaultInstrument: "bass",
         notes: [
           m(0.0, 50, "bass"),  // D3

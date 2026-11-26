@@ -143,6 +143,7 @@ export interface WorldState {
   ripples: Ripple[];
   popups: NotePopup[];
   bpm: number;
+  gravity?: number;
   scaleId: ScaleId;
   beatClock: number;
   nextMarbleId: number;
@@ -206,6 +207,7 @@ export interface LevelDef {
   subtitleEn: string;
   subtitleVi: string;
   bpm: number;
+  gravity?: number;
   scaleId: ScaleId;
   budget: PieceBudget;
   emitters: Array<Omit<Emitter, "nextEmitBeat" | "pulse">>;
@@ -222,6 +224,7 @@ export interface PresetDef {
   nameEn: string;
   nameVi: string;
   bpm: number;
+  gravity?: number;
   scaleId: ScaleId;
   emitters: Array<Omit<Emitter, "nextEmitBeat" | "pulse">>;
   bars: Array<Omit<BarPiece, "flexOffset" | "flexVel" | "hitNx" | "hitNy">>;

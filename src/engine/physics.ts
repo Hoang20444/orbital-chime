@@ -156,10 +156,11 @@ export function stepFixed(world: WorldState, isPlaying: boolean): PhysicsEvent[]
     }
   }
 
+  const g = world.gravity ?? GRAVITY;
   for (let step = 0; step < SUB_STEPS; step++) {
     for (let mi = world.marbles.length - 1; mi >= 0; mi--) {
       const m = world.marbles[mi];
-      m.vy += GRAVITY * subDt;
+      m.vy += g * subDt;
       clampSpeed(m);
       m.x += m.vx * subDt;
       m.y += m.vy * subDt;
@@ -454,7 +455,7 @@ export function simulateGhostPath(
       iterations++;
       const orb = queue.shift()!;
       for (let t = 0; t < steps; t++) {
-        orb.vy += GRAVITY * FIXED_DT;
+        orb.vy += (world.gravity ?? GRAVITY) * FIXED_DT;
         const sp = Math.hypot(orb.vx, orb.vy);
         if (sp > MAX_SPEED) {
           orb.vx *= MAX_SPEED / sp;
