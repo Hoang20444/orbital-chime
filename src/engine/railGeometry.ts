@@ -99,14 +99,14 @@ function sampleStationAtArcLength(
  * stations, and standoffs for the Curved Dual-Support Rail.
  */
 export function buildRailGeometry(rail: TransferRailPiece): RailGeometry {
-  const armLen = Math.max(55, Math.min(230, rail.armLength || 120));
+  const armLen = Math.max(34, Math.min(230, rail.armLength || 120));
   const halfOpenRad =
     (Math.max(40, Math.min(150, rail.openingAngle || 88)) * 0.5 * Math.PI) / 180;
   const curv = Math.max(0.2, Math.min(0.88, rail.curvature || 0.52));
   const bias = Math.max(-0.45, Math.min(0.45, rail.slopeBias || 0));
   const rodRadius = DUAL_RAIL_ROD_RADIUS;
   const railSpacing = Math.max(9, Math.min(14.5, rail.railSpacing || 12.8));
-  const bridgeSpacing = Math.max(28, Math.min(96, rail.bridgeSpacing || 52));
+  const bridgeSpacing = Math.max(24, Math.min(96, rail.bridgeSpacing || 52));
   const supportHeight = computeDualRailSupportHeight(8, rodRadius, railSpacing);
 
   const localPts: Vec2[] = [];
@@ -249,7 +249,7 @@ export function buildRailGeometry(rail: TransferRailPiece): RailGeometry {
   const totalLength = cumLen[count - 1];
 
   // Connecting support bridges at regular arc-length intervals along usable span
-  const inset = Math.min(18, totalLength * 0.16);
+  const inset = Math.min(14, totalLength * 0.16);
   const usable = Math.max(10, totalLength - 2 * inset);
   const nIntervals = Math.max(1, Math.round(usable / bridgeSpacing));
   const bridges: BridgeStation[] = [];

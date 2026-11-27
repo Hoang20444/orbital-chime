@@ -8,7 +8,10 @@ import {
   encodeSandboxShareHash,
 } from "../src/engine/serializer.ts";
 import type { WorldState } from "../src/engine/types.ts";
-import { sculptMarbleSong } from "../src/music/MarbleSongSculptor.ts";
+import {
+  computeSongOneLoopTicks,
+  sculptMarbleSong,
+} from "../src/music/MarbleSongSculptor.ts";
 import {
   createBlankDraft,
   draftToMarbleSongDef,
@@ -142,8 +145,7 @@ function buildTestFormat1Midi(bpm: number, ppq = 480): Uint8Array {
 }
 
 function assertSculptedWorldHits100(label: string, world: WorldState, loopBeats: number): void {
-  const loopSec = (loopBeats * 60) / world.bpm;
-  const totalTicks = Math.floor(loopSec / FIXED_DT) + 102;
+  const totalTicks = computeSongOneLoopTicks(loopBeats, world.bpm);
   const hitsByBar = new Map<string, number[]>();
   const stray: string[] = [];
   let railEnters = 0;
@@ -169,9 +171,15 @@ function assertSculptedWorldHits100(label: string, world: WorldState, loopBeats:
   console.log(
     `[Studio Verify] ${label}: bars=${world.bars.length}, rails=${world.rails.length}, bumpers=${world.bumpers.length}, railEnters=${railEnters}, bumperHits=${bumperHits}, missed=${missed.length}, stray=${stray.length}`
   );
-  assert.ok(world.rails.length >= 1, `${label} expected >= 1 Dual-Support Rail`);
+  assert.ok(
+    world.rails.length >= Math.max(2, world.emitters.length + 1),
+    `${label} expected mid-song + lead-in Dual-Support Rails, got ${world.rails.length}`
+  );
   assert.ok(world.bumpers.length >= 1, `${label} expected >= 1 Elastic Bumper`);
-  assert.ok(railEnters >= 1, `${label} expected >= 1 live rail_enter event`);
+  assert.ok(
+    railEnters >= Math.max(2, world.emitters.length + 1),
+    `${label} expected >= ${Math.max(2, world.emitters.length + 1)} live rail_enter events, got ${railEnters}`
+  );
   assert.ok(bumperHits >= 1, `${label} expected >= 1 live bumper_hit event`);
   assert.equal(missed.length, 0, `${label} missed bars: ${missed.join(", ")}`);
   assert.equal(stray.length, 0, `${label} stray hits: ${stray.join(", ")}`);

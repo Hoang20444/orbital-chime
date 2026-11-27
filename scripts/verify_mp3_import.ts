@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { midiToFreq } from "../src/audio/scales.ts";
 import { FIXED_DT, stepFixed } from "../src/engine/physics.ts";
-import { sculptMarbleSong } from "../src/music/MarbleSongSculptor.ts";
+import {
+  computeSongOneLoopTicks,
+  sculptMarbleSong,
+} from "../src/music/MarbleSongSculptor.ts";
 import {
   analyzeAudioClipToDraft,
   extractWaveformPeaks,
@@ -75,8 +78,7 @@ function synthHat(buf: Float32Array, sr: number, startSec: number, amp = 0.22): 
 function assertSculptHitsAll(label: string, draft: ReturnType<typeof analyzeAudioClipToDraft>["draft"]): void {
   const song = draftToMarbleSongDef(draft);
   const world = sculptMarbleSong(song, draft.leadVoice);
-  const loopSec = (song.loopBeats * 60) / song.bpm;
-  const totalTicks = Math.floor(loopSec / FIXED_DT) + 102;
+  const totalTicks = computeSongOneLoopTicks(song.loopBeats, song.bpm);
   const hitsByBar = new Map<string, number>();
   const stray: string[] = [];
   let railEnters = 0;
@@ -102,21 +104,27 @@ function assertSculptHitsAll(label: string, draft: ReturnType<typeof analyzeAudi
     for (const ch of song.chains) {
       console.log(
         "  chain=" +
-          ch.id +
-          " " +
-          ch.notes
-            .map((n, i) => {
-              const id = `song_${song.id}_${ch.id}_${i}`;
-              return `${i}:${n.label}@${n.beat}${hitsByBar.has(id) ? "" : "(MISS)"}`;
-            })
-            .join(" ")
+        ch.id +
+        " " +
+        ch.notes
+          .map((n, i) => {
+            const id = `song_${song.id}_${ch.id}_${i}`;
+            return `${i}:${n.label}@${n.beat}${hitsByBar.has(id) ? "" : "(MISS)"}`;
+          })
+          .join(" ")
       );
     }
   }
-  assert.ok(world.rails.length >= 1, `${label} expected >= 1 Dual-Support Rail`);
-  assert.ok(world.bumpers.length >= 1, `${label} expected >= 1 Elastic Bumper`);
-  assert.ok(railEnters >= 1, `${label} expected >= 1 rail_enter event`);
-  assert.ok(bumperHits >= 1, `${label} expected >= 1 bumper_hit event`);
+  assert.ok(
+    world.rails.length >= song.chains.length + 2,
+    `${label} expected frequent Dual-Support Rails (>= ${song.chains.length + 2}), got ${world.rails.length}`
+  );
+  assert.ok(world.bumpers.length >= 2, `${label} expected >= 2 Elastic Bumpers`);
+  assert.ok(
+    railEnters >= song.chains.length + 2,
+    `${label} expected >= ${song.chains.length + 2} rail_enter events, got ${railEnters}`
+  );
+  assert.ok(bumperHits >= 2, `${label} expected >= 2 bumper_hit events`);
   assert.equal(missed.length, 0, `${label} missed bars: ${missed.map((b) => b.noteLabel).join(",")}`);
   assert.equal(stray.length, 0, `${label} stray hits: ${stray.join(",")}`);
 }

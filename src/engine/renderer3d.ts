@@ -330,8 +330,8 @@ export class OrbitalRenderer3D {
 
     // Studio dot grid
     const dotPositions: number[] = [];
-    for (let gx = -400; gx <= 1600; gx += 40) {
-      for (let gy = -400; gy <= 6000; gy += 40) {
+    for (let gx = -560; gx <= 1760; gx += 40) {
+      for (let gy = -400; gy <= 9600; gy += 40) {
         dotPositions.push(gx, -gy, -9.5);
       }
     }
