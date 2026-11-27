@@ -306,7 +306,9 @@ export const App: React.FC = () => {
         syncUi();
       }
     } else if (window.location.hash.startsWith("#song=")) {
-      const songId = window.location.hash.slice("#song=".length).trim();
+      const hashBody = window.location.hash.slice(1);
+      const params = new URLSearchParams(hashBody);
+      const songId = (params.get("song") ?? "").trim();
       const song = MARBLE_SONGS.find((s) => s.id === songId);
       if (song) {
         const w = sculptMarbleSong(song);
@@ -317,11 +319,35 @@ export const App: React.FC = () => {
         rhythmEngine.setBpm(w.bpm);
         setBpm(w.bpm);
         setScaleId(w.scaleId);
+        const viewParam = params.get("view");
+        if (viewParam === "2d") {
+          setIs3d(false);
+        } else if (viewParam === "front") {
+          setIs3d(true);
+          setCameraViewMode("front");
+        } else if (viewParam === "perspective") {
+          setIs3d(true);
+          setCameraViewMode("perspective");
+        }
+        const zParam = Number(params.get("zoom"));
+        const fxParam = Number(params.get("fx"));
+        const fyParam = Number(params.get("fy"));
+        const hasManualView =
+          Boolean(viewParam) || Number.isFinite(zParam) || Number.isFinite(fxParam);
+        cameraRef.current = {
+          zoom: Number.isFinite(zParam) && zParam > 0.3 && zParam <= 3.0 ? zParam : 0.66,
+          focusX: Number.isFinite(fxParam) ? fxParam : STAGE_W * 0.5,
+          focusY: Number.isFinite(fyParam) ? fyParam : 220,
+        };
+        setZoomPct(Math.round(cameraRef.current.zoom * 100));
+        const warmupSec = Number(params.get("warmup"));
+        if (Number.isFinite(warmupSec) && warmupSec > 0 && warmupSec <= 20) {
+          const steps = Math.round(warmupSec / FIXED_DT);
+          for (let i = 0; i < steps; i++) stepFixed(w, true);
+        }
         setIsPlaying(true);
-        setFollowBall(true);
+        setFollowBall(!hasManualView);
         followedMarbleIdRef.current = null;
-        cameraRef.current = { zoom: 0.66, focusX: STAGE_W * 0.5, focusY: 220 };
-        setZoomPct(66);
         setShowTip(false);
         syncUi();
       }
@@ -330,6 +356,7 @@ export const App: React.FC = () => {
       if (decoded) {
         const base = createWorldFromPreset(SANDBOX_PRESETS[0]);
         if (decoded.bpm) base.bpm = decoded.bpm;
+        if (decoded.gravity) base.gravity = decoded.gravity;
         if (decoded.scaleId) base.scaleId = decoded.scaleId;
         if (decoded.bars) base.bars = decoded.bars;
         if (decoded.bumpers) base.bumpers = decoded.bumpers;

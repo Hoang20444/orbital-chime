@@ -76,13 +76,17 @@ function assertSculptHitsAll(label: string, draft: ReturnType<typeof analyzeAudi
   const song = draftToMarbleSongDef(draft);
   const world = sculptMarbleSong(song, draft.leadVoice);
   const loopSec = (song.loopBeats * 60) / song.bpm;
-  const totalTicks = Math.floor(loopSec / FIXED_DT) + 45;
+  const totalTicks = Math.floor(loopSec / FIXED_DT) + 102;
   const hitsByBar = new Map<string, number>();
   const stray: string[] = [];
+  let railEnters = 0;
+  let bumperHits = 0;
 
   for (let t = 0; t < totalTicks; t++) {
     const events = stepFixed(world, true);
     for (const ev of events) {
+      if (ev.type === "rail_enter") railEnters++;
+      if (ev.type === "bumper_hit") bumperHits++;
       if (ev.type === "bar_hit") {
         const count = (hitsByBar.get(ev.barId) ?? 0) + 1;
         hitsByBar.set(ev.barId, count);
@@ -92,7 +96,7 @@ function assertSculptHitsAll(label: string, draft: ReturnType<typeof analyzeAudi
   }
   const missed = world.bars.filter((b) => !hitsByBar.has(b.id));
   console.log(
-    `[Audio Sculpture] ${label}: bars=${world.bars.length}, missed=${missed.length}, stray=${stray.length}`
+    `[Audio Sculpture] ${label}: bars=${world.bars.length}, rails=${world.rails.length}, bumpers=${world.bumpers.length}, railEnters=${railEnters}, bumperHits=${bumperHits}, missed=${missed.length}, stray=${stray.length}`
   );
   if (missed.length > 0) {
     for (const ch of song.chains) {
@@ -109,6 +113,10 @@ function assertSculptHitsAll(label: string, draft: ReturnType<typeof analyzeAudi
       );
     }
   }
+  assert.ok(world.rails.length >= 1, `${label} expected >= 1 Dual-Support Rail`);
+  assert.ok(world.bumpers.length >= 1, `${label} expected >= 1 Elastic Bumper`);
+  assert.ok(railEnters >= 1, `${label} expected >= 1 rail_enter event`);
+  assert.ok(bumperHits >= 1, `${label} expected >= 1 bumper_hit event`);
   assert.equal(missed.length, 0, `${label} missed bars: ${missed.map((b) => b.noteLabel).join(",")}`);
   assert.equal(stray.length, 0, `${label} stray hits: ${stray.join(",")}`);
 }

@@ -42,6 +42,9 @@ export function cloneEditableSnapshot(world: WorldState): EditableSnapshot {
       y: b.y,
       radius: b.radius,
       locked: b.locked,
+      customRestitution: b.customRestitution,
+      trackChannel: b.trackChannel,
+      silent: b.silent,
     })),
     splitters: world.splitters.map((s) => ({
       id: s.id,
@@ -65,6 +68,7 @@ export function cloneEditableSnapshot(world: WorldState): EditableSnapshot {
       boost: r.boost,
       flipped: r.flipped,
       locked: r.locked,
+      trackChannel: r.trackChannel,
     })),
     emitters: world.emitters.map((e) => ({
       id: e.id,
@@ -110,6 +114,17 @@ type SerializedEmitterTuple =
   | [number, number, number, number, number, number]
   | [number, number, number, number, number, number, string];
 
+interface BumperShareMeta {
+  r?: number;
+  c?: string;
+  s?: 1;
+}
+
+type SerializedBumperTuple =
+  | [number, number]
+  | [number, number, number]
+  | [number, number, number, BumperShareMeta];
+
 type SerializedRailTuple = [
   string, // variant
   number, // x
@@ -122,14 +137,16 @@ type SerializedRailTuple = [
   number, // railSpacing
   number, // boost
   number?, // flipped (1 | 0)
-  number? // bridgeSpacing
+  number?, // bridgeSpacing
+  string? // trackChannel
 ];
 
 interface SharePayload {
   bpm: number;
+  g?: number;
   scaleId: ScaleId;
   bars: SerializedBarTuple[];
-  bumpers: Array<[number, number]>;
+  bumpers: SerializedBumperTuple[];
   splitters: Array<[number, number]>;
   rails?: SerializedRailTuple[];
   emitters: SerializedEmitterTuple[];
@@ -142,6 +159,7 @@ function round2(n: number): number {
 export function encodeSandboxShareHash(world: WorldState): string {
   const payload: SharePayload = {
     bpm: world.bpm,
+    ...(world.gravity !== undefined ? { g: world.gravity } : {}),
     scaleId: world.scaleId,
     bars: world.bars.map((b) => {
       const meta: BarShareMeta = {};
@@ -192,7 +210,29 @@ export function encodeSandboxShareHash(world: WorldState): string {
         b.material,
       ];
     }),
-    bumpers: world.bumpers.map((b) => [round2(b.x), round2(b.y)]),
+    bumpers: world.bumpers.map((b) => {
+      const meta: BumperShareMeta = {};
+      let hasMeta = false;
+      if (b.customRestitution !== undefined) {
+        meta.r = Math.round(b.customRestitution * 10000) / 10000;
+        hasMeta = true;
+      }
+      if (b.trackChannel !== undefined) {
+        meta.c = b.trackChannel;
+        hasMeta = true;
+      }
+      if (b.silent) {
+        meta.s = 1;
+        hasMeta = true;
+      }
+      if (hasMeta) {
+        return [round2(b.x), round2(b.y), round2(b.radius), meta];
+      }
+      if (b.radius !== 22) {
+        return [round2(b.x), round2(b.y), round2(b.radius)];
+      }
+      return [round2(b.x), round2(b.y)];
+    }),
     splitters: world.splitters.map((s) => [round2(s.x), round2(s.y)]),
     rails: (world.rails ?? []).map((r) => [
       r.variant,
@@ -207,6 +247,7 @@ export function encodeSandboxShareHash(world: WorldState): string {
       round2(r.boost),
       r.flipped ? 1 : 0,
       round2(r.bridgeSpacing),
+      r.trackChannel,
     ]),
     emitters: world.emitters.map((e) => {
       if (e.trackChannel) {
@@ -246,6 +287,7 @@ export function encodeSandboxShareHash(world: WorldState): string {
 
 export function decodeSandboxShareHash(hash: string): Partial<{
   bpm: number;
+  gravity: number;
   scaleId: ScaleId;
   bars: BarPiece[];
   bumpers: BumperPiece[];
@@ -265,6 +307,7 @@ export function decodeSandboxShareHash(hash: string): Partial<{
 
     return {
       bpm: typeof parsed.bpm === "number" ? parsed.bpm : 108,
+      gravity: typeof parsed.g === "number" ? parsed.g : undefined,
       scaleId: parsed.scaleId ?? "c_pentatonic",
       bars: (parsed.bars ?? []).map((b, i) => {
         const meta = b[5];
@@ -284,12 +327,18 @@ export function decodeSandboxShareHash(hash: string): Partial<{
           silent: meta?.s === 1 ? true : undefined,
         };
       }),
-      bumpers: (parsed.bumpers ?? []).map((b, i) => ({
-        id: `sb_bmp_${i}`,
-        x: b[0],
-        y: b[1],
-        radius: 22,
-      })),
+      bumpers: (parsed.bumpers ?? []).map((b, i) => {
+        const meta = b[3];
+        return {
+          id: `sb_bmp_${i}`,
+          x: b[0],
+          y: b[1],
+          radius: b[2] ?? 22,
+          customRestitution: meta?.r,
+          trackChannel: meta?.c,
+          silent: meta?.s === 1 ? true : undefined,
+        };
+      }),
       splitters: (parsed.splitters ?? []).map((s, i) => ({
         id: `sb_spl_${i}`,
         x: s[0],
@@ -310,6 +359,7 @@ export function decodeSandboxShareHash(hash: string): Partial<{
         boost: r[9] ?? 0.25,
         flipped: r[10] === 1,
         bridgeSpacing: Math.max(28, Math.min(96, r[11] ?? 52)),
+        trackChannel: r[12],
       })),
       emitters: (parsed.emitters ?? []).map((e, i) => ({
         id: `sb_em_${i}`,

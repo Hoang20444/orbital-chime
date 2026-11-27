@@ -31,6 +31,7 @@ export interface TransferRailPiece {
   boost: number; // 0..1 optional momentum-assist along track
   flipped?: boolean;
   locked?: boolean;
+  trackChannel?: string;
   // Transient visual state
   activeGlow?: number;
   pulseT?: number;
@@ -87,6 +88,9 @@ export interface BumperPiece {
   y: number;
   radius: number;
   locked?: boolean;
+  customRestitution?: number;
+  trackChannel?: string;
+  silent?: boolean;
   pulse?: number;
 }
 

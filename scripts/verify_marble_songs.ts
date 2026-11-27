@@ -11,14 +11,18 @@ for (const song of MARBLE_SONGS) {
 
   // Measure exactly 1 full song cycle (up to loopBeats + drop tail, stopping strictly before Loop 2's bar 0 hit)
   const loopSec = (song.loopBeats * 60) / song.bpm;
-  const totalTicks = Math.floor(loopSec / FIXED_DT) + 45;
+  const totalTicks = Math.floor(loopSec / FIXED_DT) + 102;
 
   const hitsByBar = new Map<string, { tick: number; speed: number; marbleId?: number }[]>();
   const strayBars: string[] = [];
+  let railEnters = 0;
+  let bumperHits = 0;
 
   for (let tick = 0; tick < totalTicks; tick++) {
     const events = stepFixed(world, true);
     for (const ev of events) {
+      if (ev.type === "rail_enter") railEnters++;
+      if (ev.type === "bumper_hit") bumperHits++;
       if (ev.type === "bar_hit") {
         const list = hitsByBar.get(ev.barId) ?? [];
         list.push({ tick, speed: ev.speed });
@@ -59,11 +63,15 @@ for (const song of MARBLE_SONGS) {
   }
 
   console.log(
-    `[Song] ${song.titleEn} (${song.bpm} BPM, ${totalScoreNotes} bars): missed=${missed}, multiHitStray=${strayBars.length}, maxTimingErr=${maxErrMs.toFixed(1)}ms`
+    `[Song] ${song.titleEn} (${song.bpm} BPM, ${totalScoreNotes} bars, ${world.rails.length} rails, ${world.bumpers.length} bumpers): missed=${missed}, multiHitStray=${strayBars.length}, railEnters=${railEnters}, bumperHits=${bumperHits}, maxTimingErr=${maxErrMs.toFixed(1)}ms`
   );
   if (strayBars.length > 0) {
     console.log("  Stray details:", strayBars.slice(0, 6).join("; "));
   }
+  assert.ok(world.rails.length >= 2, `${song.id} expected >= 2 Dual-Support Rails`);
+  assert.ok(world.bumpers.length >= 1, `${song.id} expected >= 1 Elastic Bumper`);
+  assert.ok(railEnters >= 2, `${song.id} expected >= 2 rail_enter events, got ${railEnters}`);
+  assert.ok(bumperHits >= 1, `${song.id} expected >= 1 bumper_hit events, got ${bumperHits}`);
   assert.equal(missed, 0, `${song.id} missed ${missed} bars!`);
   assert.equal(strayBars.length, 0, `${song.id} had stray collisions: ${strayBars.join(", ")}`);
   assert.ok(maxErrMs <= 22, `${song.id} maxTimingErr=${maxErrMs.toFixed(1)}ms exceeded 22ms!`);

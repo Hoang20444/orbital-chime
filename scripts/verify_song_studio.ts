@@ -143,13 +143,17 @@ function buildTestFormat1Midi(bpm: number, ppq = 480): Uint8Array {
 
 function assertSculptedWorldHits100(label: string, world: WorldState, loopBeats: number): void {
   const loopSec = (loopBeats * 60) / world.bpm;
-  const totalTicks = Math.floor(loopSec / FIXED_DT) + 45;
+  const totalTicks = Math.floor(loopSec / FIXED_DT) + 102;
   const hitsByBar = new Map<string, number[]>();
   const stray: string[] = [];
+  let railEnters = 0;
+  let bumperHits = 0;
 
   for (let t = 0; t < totalTicks; t++) {
     const events = stepFixed(world, true);
     for (const ev of events) {
+      if (ev.type === "rail_enter") railEnters++;
+      if (ev.type === "bumper_hit") bumperHits++;
       if (ev.type === "bar_hit") {
         const list = hitsByBar.get(ev.barId) ?? [];
         list.push(t);
@@ -163,8 +167,12 @@ function assertSculptedWorldHits100(label: string, world: WorldState, loopBeats:
 
   const missed = world.bars.filter((b) => !hitsByBar.has(b.id)).map((b) => `${b.id}(${b.noteLabel})`);
   console.log(
-    `[Studio Verify] ${label}: bars=${world.bars.length}, missed=${missed.length}, stray=${stray.length}`
+    `[Studio Verify] ${label}: bars=${world.bars.length}, rails=${world.rails.length}, bumpers=${world.bumpers.length}, railEnters=${railEnters}, bumperHits=${bumperHits}, missed=${missed.length}, stray=${stray.length}`
   );
+  assert.ok(world.rails.length >= 1, `${label} expected >= 1 Dual-Support Rail`);
+  assert.ok(world.bumpers.length >= 1, `${label} expected >= 1 Elastic Bumper`);
+  assert.ok(railEnters >= 1, `${label} expected >= 1 live rail_enter event`);
+  assert.ok(bumperHits >= 1, `${label} expected >= 1 live bumper_hit event`);
   assert.equal(missed.length, 0, `${label} missed bars: ${missed.join(", ")}`);
   assert.equal(stray.length, 0, `${label} stray hits: ${stray.join(", ")}`);
 }
@@ -215,6 +223,8 @@ const shareHash = encodeSandboxShareHash(eliseWorld);
 const decoded = decodeSandboxShareHash(shareHash);
 assert.ok(decoded && decoded.bars && decoded.emitters);
 assert.equal(decoded.bars.length, eliseWorld.bars.length);
+assert.equal(decoded.bumpers?.length, eliseWorld.bumpers.length);
+assert.equal(decoded.rails?.length, eliseWorld.rails.length);
 assert.equal(decoded.bars[0].fixedMidi, eliseWorld.bars[0].fixedMidi);
 assert.equal(decoded.bars[0].instrumentOverride, eliseWorld.bars[0].instrumentOverride);
 assert.equal(decoded.bars[0].trackChannel, eliseWorld.bars[0].trackChannel);
@@ -222,10 +232,12 @@ assert.equal(decoded.emitters[0].trackChannel, eliseWorld.emitters[0].trackChann
 
 const reconstructed = createWorldFromPreset(SANDBOX_PRESETS[0]);
 reconstructed.bpm = decoded.bpm!;
+reconstructed.gravity = decoded.gravity;
 reconstructed.scaleId = decoded.scaleId!;
 reconstructed.bars = decoded.bars;
 reconstructed.bumpers = decoded.bumpers ?? [];
 reconstructed.splitters = decoded.splitters ?? [];
+reconstructed.rails = decoded.rails ?? [];
 reconstructed.emitters = decoded.emitters;
 assertSculptedWorldHits100(
   "Decoded Share Hash Für Elise",

@@ -63,7 +63,7 @@ function clampSpeed(m: Marble): void {
  * Resolves continuous upper-surface rolling contact against the twin front/back cylindrical
  * support rods so the marble visibly rests ON TOP of both rails and never enters between them.
  */
-function resolveMarbleOnDualRail(
+export function resolveMarbleOnDualRail(
   body: { x: number; y: number; vx: number; vy: number; radius: number },
   rail: TransferRailPiece,
   geom: RailGeometry,
@@ -389,6 +389,9 @@ export function stepFixed(world: WorldState, isPlaying: boolean): PhysicsEvent[]
       // 2. Circle-vs-Circle collisions against Bumpers
       for (const bumper of world.bumpers) {
         if (m.cueTargetId && m.cueTargetId !== bumper.id) continue;
+        if (m.trackChannel && bumper.trackChannel && m.trackChannel !== bumper.trackChannel) {
+          continue;
+        }
         const minDist = m.radius + bumper.radius;
         const dx = m.x - bumper.x;
         const dy = m.y - bumper.y;
@@ -403,13 +406,20 @@ export function stepFixed(world: WorldState, isPlaying: boolean): PhysicsEvent[]
           const vn = m.vx * nx + m.vy * ny;
           if (vn < 0) {
             const impactSpeed = -vn;
-            m.vx -= 2.12 * vn * nx;
-            m.vy -= 2.12 * vn * ny;
-            const sp = Math.hypot(m.vx, m.vy);
-            if (sp < 420) {
-              const boost = 420 / (sp || 1);
-              m.vx *= boost;
-              m.vy *= boost;
+            if (bumper.customRestitution !== undefined) {
+              m.vx -= (1 + bumper.customRestitution) * vn * nx;
+              m.vy -= (1 + bumper.customRestitution) * vn * ny;
+              m.vx *= 0.996;
+              m.vy *= 0.996;
+            } else {
+              m.vx -= 2.12 * vn * nx;
+              m.vy -= 2.12 * vn * ny;
+              const sp = Math.hypot(m.vx, m.vy);
+              if (sp < 420) {
+                const boost = 420 / (sp || 1);
+                m.vx *= boost;
+                m.vy *= boost;
+              }
             }
             clampSpeed(m);
 
@@ -429,7 +439,7 @@ export function stepFixed(world: WorldState, isPlaying: boolean): PhysicsEvent[]
                 x: bumper.x,
                 y: bumper.y,
                 speed: impactSpeed,
-                silentCue: wasSilentCue,
+                silentCue: wasSilentCue || bumper.silent,
               });
             }
           }
@@ -438,6 +448,9 @@ export function stepFixed(world: WorldState, isPlaying: boolean): PhysicsEvent[]
 
       // 2.5. Curved Dual-Support Rails (marble rolls smoothly ON TOP of both rails)
       for (const { rail, geom } of railGeoms) {
+        if (m.trackChannel && rail.trackChannel && m.trackChannel !== rail.trackChannel) {
+          continue;
+        }
         const res = resolveMarbleOnDualRail(m, rail, geom, subDt);
         clampSpeed(m);
         if (res.hitPoint) {
@@ -696,13 +709,20 @@ export function simulateGhostPath(
             orb.y = bumper.y + ny * minDist;
             const vn = orb.vx * nx + orb.vy * ny;
             if (vn < 0) {
-              orb.vx -= 2.12 * vn * nx;
-              orb.vy -= 2.12 * vn * ny;
-              const curr = Math.hypot(orb.vx, orb.vy);
-              if (curr < 420) {
-                const boost = 420 / (curr || 1);
-                orb.vx *= boost;
-                orb.vy *= boost;
+              if (bumper.customRestitution !== undefined) {
+                orb.vx -= (1 + bumper.customRestitution) * vn * nx;
+                orb.vy -= (1 + bumper.customRestitution) * vn * ny;
+                orb.vx *= 0.996;
+                orb.vy *= 0.996;
+              } else {
+                orb.vx -= 2.12 * vn * nx;
+                orb.vy -= 2.12 * vn * ny;
+                const curr = Math.hypot(orb.vx, orb.vy);
+                if (curr < 420) {
+                  const boost = 420 / (curr || 1);
+                  orb.vx *= boost;
+                  orb.vy *= boost;
+                }
               }
               orb.bounces++;
             }
