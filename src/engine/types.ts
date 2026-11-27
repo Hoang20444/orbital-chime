@@ -75,11 +75,12 @@ export interface BarPiece {
   noteLabel?: string;
   trackChannel?: string;
   silent?: boolean;
-  // Transient visual oscillation state
+  // Transient visual oscillation & illumination state
   flexOffset?: number;
   flexVel?: number;
   hitNx?: number;
   hitNy?: number;
+  glow?: number;
 }
 
 export interface BumperPiece {

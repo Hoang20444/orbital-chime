@@ -89,10 +89,10 @@ export const SongShowcasePopover: React.FC<SongShowcasePopoverProps> = ({
         width: 360,
         maxHeight: "min(76dvh, 580px)",
         overflowY: "auto",
-        backgroundColor: "#F7F8F5",
+        backgroundColor: "#131B28",
         border: "1px solid var(--border-strong)",
         borderRadius: 16,
-        boxShadow: "0 12px 32px rgba(28, 35, 33, 0.14)",
+        boxShadow: "0 16px 40px rgba(2, 6, 12, 0.6)",
         padding: 14,
         zIndex: 45,
         display: "flex",
@@ -143,15 +143,12 @@ export const SongShowcasePopover: React.FC<SongShowcasePopoverProps> = ({
           onClose();
           onOpenStudio(null);
         }}
-        className="hw-btn"
+        className="hw-btn is-accent"
         style={{
           width: "100%",
           padding: "8px 12px",
           fontSize: 12.5,
           fontWeight: 700,
-          backgroundColor: "#1C2321",
-          color: "#FFFFFF",
-          borderColor: "transparent",
           textAlign: "center",
         }}
       >
@@ -181,14 +178,11 @@ export const SongShowcasePopover: React.FC<SongShowcasePopoverProps> = ({
                 key={opt.id}
                 type="button"
                 onClick={() => handleSelectTimbre(opt.id)}
-                className="hw-btn"
+                className={`hw-btn ${active ? "is-selected" : ""}`}
                 style={{
                   padding: "4px 9px",
                   fontSize: 11.5,
                   fontWeight: 600,
-                  backgroundColor: active ? "var(--ink)" : "#FFFFFF",
-                  color: active ? "#FFFFFF" : "var(--ink)",
-                  borderColor: active ? "var(--ink)" : "var(--border)",
                 }}
               >
                 {locale === "vi" ? opt.labelVi : opt.labelEn}
@@ -222,9 +216,9 @@ export const SongShowcasePopover: React.FC<SongShowcasePopoverProps> = ({
                   padding: "8px 10px",
                   borderRadius: 11,
                   border: `1.5px solid ${
-                    isSelected ? "var(--ink)" : "var(--border)"
+                    isSelected ? "#48D6F7" : "var(--border)"
                   }`,
-                  backgroundColor: isSelected ? "#FFFFFF" : "#ECEEE8",
+                  backgroundColor: isSelected ? "rgba(56, 226, 255, 0.1)" : "#182334",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "space-between",
@@ -311,9 +305,9 @@ export const SongShowcasePopover: React.FC<SongShowcasePopoverProps> = ({
                 padding: "9px 11px",
                 borderRadius: 11,
                 border: `1.5px solid ${
-                  isSelected ? "var(--ink)" : "var(--border)"
+                  isSelected ? "#48D6F7" : "var(--border)"
                 }`,
-                backgroundColor: isSelected ? "#FFFFFF" : "#ECEEE8",
+                backgroundColor: isSelected ? "rgba(56, 226, 255, 0.1)" : "#182334",
                 cursor: "pointer",
                 display: "flex",
                 flexDirection: "column",

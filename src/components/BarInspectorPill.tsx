@@ -138,10 +138,11 @@ export const BarInspectorPill: React.FC<BarInspectorPillProps> = ({
         alignItems: "center",
         gap: 8,
         padding: "6px 12px",
-        backgroundColor: "#F7F8F5",
+        backgroundColor: "rgba(18, 26, 39, 0.94)",
+        backdropFilter: "blur(14px)",
         border: "1px solid var(--border-strong)",
         borderRadius: 14,
-        boxShadow: "0 8px 24px rgba(28, 35, 33, 0.1)",
+        boxShadow: "0 12px 28px rgba(2, 6, 12, 0.5)",
         whiteSpace: "nowrap",
       }}
     >

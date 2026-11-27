@@ -72,62 +72,62 @@ function isMaterialTool(tool: ToolType): tool is MaterialType {
 type DragState =
   | { kind: "none" }
   | {
-      kind: "draw_bar";
-      ax: number;
-      ay: number;
-      bx: number;
-      by: number;
-      material: MaterialType;
-      lastDegree: number;
-    }
+    kind: "draw_bar";
+    ax: number;
+    ay: number;
+    bx: number;
+    by: number;
+    material: MaterialType;
+    lastDegree: number;
+  }
   | {
-      kind: "move_bar";
-      id: string;
-      startWorldX: number;
-      startWorldY: number;
-      origAx: number;
-      origAy: number;
-      origBx: number;
-      origBy: number;
-      snapshotBefore: EditableSnapshot;
-    }
+    kind: "move_bar";
+    id: string;
+    startWorldX: number;
+    startWorldY: number;
+    origAx: number;
+    origAy: number;
+    origBx: number;
+    origBy: number;
+    snapshotBefore: EditableSnapshot;
+  }
   | {
-      kind: "drag_end";
-      id: string;
-      end: "a" | "b";
-      lastDegree: number;
-      snapshotBefore: EditableSnapshot;
-    }
+    kind: "drag_end";
+    id: string;
+    end: "a" | "b";
+    lastDegree: number;
+    snapshotBefore: EditableSnapshot;
+  }
   | {
-      kind: "move_circle";
-      targetType: "bumper" | "splitter" | "emitter";
-      id: string;
-      snapshotBefore: EditableSnapshot;
-    }
+    kind: "move_circle";
+    targetType: "bumper" | "splitter" | "emitter";
+    id: string;
+    snapshotBefore: EditableSnapshot;
+  }
   | {
-      kind: "move_rail";
-      id: string;
-      startWorldX: number;
-      startWorldY: number;
-      origX: number;
-      origY: number;
-      snapshotBefore: EditableSnapshot;
-    }
+    kind: "move_rail";
+    id: string;
+    startWorldX: number;
+    startWorldY: number;
+    origX: number;
+    origY: number;
+    snapshotBefore: EditableSnapshot;
+  }
   | {
-      kind: "drag_rail_handle";
-      id: string;
-      end: "entry" | "exit";
-      origRot: number;
-      origStartAngle: number;
-      snapshotBefore: EditableSnapshot;
-    }
+    kind: "drag_rail_handle";
+    id: string;
+    end: "entry" | "exit";
+    origRot: number;
+    origStartAngle: number;
+    snapshotBefore: EditableSnapshot;
+  }
   | {
-      kind: "pan_camera";
-      startClientX: number;
-      startClientY: number;
-      origFocusX: number;
-      origFocusY: number;
-    };
+    kind: "pan_camera";
+    startClientX: number;
+    startClientY: number;
+    origFocusX: number;
+    origFocusY: number;
+  };
 
 function clampToWorkspace(
   x: number,
@@ -150,9 +150,9 @@ export const App: React.FC = () => {
   const [locale, setLocale] = useState<Locale>("en");
   const [mode, setMode] = useState<"puzzle" | "sandbox">(() =>
     window.location.hash.startsWith("#s=") ||
-    window.location.hash.startsWith("#song=") ||
-    window.location.hash.startsWith("#preset=") ||
-    window.location.hash.startsWith("#studio=")
+      window.location.hash.startsWith("#song=") ||
+      window.location.hash.startsWith("#preset=") ||
+      window.location.hash.startsWith("#studio=")
       ? "sandbox"
       : "puzzle"
   );
@@ -871,12 +871,12 @@ export const App: React.FC = () => {
         const draftBar =
           drag.kind === "draw_bar"
             ? {
-                ax: drag.ax,
-                ay: drag.ay,
-                bx: drag.bx,
-                by: drag.by,
-                material: drag.material,
-              }
+              ax: drag.ax,
+              ay: drag.ay,
+              bx: drag.bx,
+              by: drag.by,
+              material: drag.material,
+            }
             : null;
 
         const showGhost =
@@ -1528,12 +1528,13 @@ export const App: React.FC = () => {
             transform: "translateX(-50%)",
             zIndex: 10,
             fontSize: 12,
-            color: "var(--slate)",
+            color: "var(--ink-soft)",
             fontWeight: 500,
-            backgroundColor: "rgba(247, 248, 245, 0.88)",
+            backgroundColor: "rgba(16, 24, 38, 0.86)",
+            backdropFilter: "blur(12px)",
             border: "1px solid var(--border)",
             borderRadius: 999,
-            padding: "2px 11px",
+            padding: "3px 12px",
             pointerEvents: "none",
             whiteSpace: "nowrap",
           }}
@@ -1583,10 +1584,11 @@ export const App: React.FC = () => {
           alignItems: "center",
           gap: 6,
           padding: "5px 8px",
-          backgroundColor: "rgba(247, 248, 245, 0.94)",
+          backgroundColor: "rgba(16, 24, 38, 0.88)",
+          backdropFilter: "blur(14px)",
           border: "1px solid var(--border-strong)",
           borderRadius: 12,
-          boxShadow: "0 4px 14px rgba(28, 35, 33, 0.08)",
+          boxShadow: "0 8px 24px rgba(2, 6, 12, 0.42)",
         }}
       >
         <button
@@ -1602,9 +1604,6 @@ export const App: React.FC = () => {
             fontSize: 11.5,
             fontFamily: "var(--font-mono), monospace",
             fontWeight: 700,
-            backgroundColor: is3d ? "#1E4B63" : "#FFFFFF",
-            color: is3d ? "#FFFFFF" : "var(--ink)",
-            borderColor: is3d ? "#1E4B63" : "var(--border)",
           }}
           title={locale === "vi" ? "Chuyển chế độ 3D / 2D" : "Toggle 3D / 2D view"}
         >
@@ -1625,9 +1624,7 @@ export const App: React.FC = () => {
               fontSize: 11,
               fontFamily: "var(--font-mono), monospace",
               fontWeight: 600,
-              backgroundColor: "#FFFFFF",
-              color: "#1E4B63",
-              borderColor: "var(--border)",
+              color: "#6FE5FF",
             }}
             title={
               locale === "vi"
@@ -1660,9 +1657,6 @@ export const App: React.FC = () => {
             display: "flex",
             alignItems: "center",
             gap: 5,
-            background: followBall ? "#1C2321" : "#FFFFFF",
-            color: followBall ? "#FFFFFF" : "var(--ink)",
-            borderColor: followBall ? "#1C2321" : "var(--border)",
           }}
           title={locale === "vi" ? "Theo dõi bóng ở giữa màn hình (Phím F)" : "Follow ball in center (Key F)"}
         >
@@ -1671,7 +1665,8 @@ export const App: React.FC = () => {
               width: 7,
               height: 7,
               borderRadius: 999,
-              backgroundColor: followBall ? "#CE5B46" : "var(--slate)",
+              backgroundColor: followBall ? "#38E2FF" : "var(--slate)",
+              boxShadow: followBall ? "0 0 8px #38E2FF" : "none",
               display: "inline-block",
             }}
           />
@@ -1710,7 +1705,7 @@ export const App: React.FC = () => {
             fontSize: 11.5,
             fontFamily: "var(--font-mono), monospace",
             fontWeight: 600,
-            color: simSpeed < 1 ? "#1E4B63" : "var(--ink)",
+            color: simSpeed < 1 ? "#6FE5FF" : "var(--ink)",
           }}
           title={locale === "vi" ? "Tốc độ (0.55x / 0.7x / 0.85x / 1.0x)" : "Speed (0.55x / 0.7x / 0.85x / 1.0x)"}
         >
@@ -1731,7 +1726,7 @@ export const App: React.FC = () => {
             fontSize: 11.5,
             fontFamily: "var(--font-mono)",
             fontWeight: 600,
-            color: zoomPct !== 100 ? "#CE5B46" : "var(--slate)",
+            color: zoomPct !== 100 ? "#FFB86C" : "var(--slate)",
           }}
           title={locale === "vi" ? "Cuộn chuột để zoom · Bấm để đặt lại 100% (Phím 0)" : "Scroll to zoom · Click to reset 100% (Key 0)"}
         >

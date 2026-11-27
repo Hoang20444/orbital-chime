@@ -220,11 +220,12 @@ function drawTransferRail2D(
 
 function drawPhysicalBar(
   ctx: CanvasRenderingContext2D,
-  bar: Pick<BarPiece, "ax" | "ay" | "bx" | "by" | "material" | "locked"> & {
+  bar: Pick<BarPiece, "ax" | "ay" | "bx" | "by" | "material" | "locked" | "silent"> & {
     flexOffset?: number;
     flexVel?: number;
     hitNx?: number;
     hitNy?: number;
+    glow?: number;
   },
   isSelected: boolean,
   isHovered: boolean
@@ -261,7 +262,7 @@ export function renderWorld(
 
   const boardW = worldMaxX - worldMinX;
   const boardH = worldMaxY - worldMinY;
-  ctx.fillStyle = "#EDE7DC";
+  ctx.fillStyle = "#0F1724";
   ctx.beginPath();
   ctx.roundRect(worldMinX, worldMinY, boardW, boardH, 12 / scale);
   ctx.fill();
@@ -272,7 +273,7 @@ export function renderWorld(
   ctx.clip();
 
   // 2. Full-bleed architectural dot grid across entire expanded canvas
-  ctx.fillStyle = TOKENS.border;
+  ctx.fillStyle = "rgba(86, 114, 150, 0.28)";
   const step = 25;
   const startGx = Math.floor(worldMinX / step) * step;
   const startGy = Math.floor(worldMinY / step) * step;
@@ -298,7 +299,7 @@ export function renderWorld(
   // Subtle corner crop marks around the Puzzle 1000x700 composition stage
   if (opts.mode === "puzzle") {
     const m = 14;
-    ctx.strokeStyle = "rgba(28, 35, 33, 0.14)";
+    ctx.strokeStyle = "rgba(148, 174, 206, 0.24)";
     ctx.lineWidth = 1.25 / scale;
     ctx.beginPath();
     // Top-left & Top-right
@@ -331,7 +332,7 @@ export function renderWorld(
   if (opts.hintOverlay) {
     ctx.save();
     ctx.setLineDash([6, 6]);
-    ctx.strokeStyle = "rgba(28, 35, 33, 0.34)";
+    ctx.strokeStyle = "rgba(140, 184, 228, 0.44)";
     for (const hb of opts.hintOverlay.bars ?? []) {
       const spec = MATERIALS[hb.material];
       ctx.lineWidth = spec.thickness;
@@ -378,7 +379,7 @@ export function renderWorld(
       const pts = branch.points;
       for (let i = 1; i < pts.length; i++) {
         const fade = Math.max(0.05, 1 - i / pts.length);
-        ctx.fillStyle = `rgba(28, 35, 33, ${(fade * 0.34).toFixed(3)})`;
+        ctx.fillStyle = `rgba(128, 184, 232, ${(fade * 0.42).toFixed(3)})`;
         ctx.beginPath();
         ctx.arc(pts[i].x, pts[i].y, 2.1, 0, Math.PI * 2);
         ctx.fill();
@@ -529,8 +530,10 @@ export function renderWorld(
     } else if (bar.noteLabel) {
       const mx = (bar.ax + bar.bx) * 0.5;
       const my = Math.min(bar.ay, bar.by) - 13;
+      const bulb = bar.glow ?? 0;
       ctx.font = `600 10px ${FONTS.mono}`;
-      ctx.fillStyle = "rgba(28, 35, 33, 0.58)";
+      ctx.fillStyle =
+        bulb > 0.06 ? MATERIALS[bar.material].highlightColor : "rgba(176, 194, 216, 0.56)";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText(bar.noteLabel, mx, my);
@@ -549,76 +552,20 @@ export function renderWorld(
     const my = Math.min(db.ay, db.by) - 22;
     ctx.font = `600 12.5px ${FONTS.mono}`;
     const labelW = ctx.measureText(note.noteName).width + 16;
-    ctx.fillStyle = TOKENS.ink;
+    ctx.fillStyle = TOKENS.paper;
+    ctx.strokeStyle = TOKENS.borderStrong;
+    ctx.lineWidth = 1.2;
     ctx.beginPath();
     ctx.roundRect(mx - labelW * 0.5, my - 11, labelW, 21, 6);
     ctx.fill();
-    ctx.fillStyle = TOKENS.paper;
+    ctx.stroke();
+    ctx.fillStyle = TOKENS.ink;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillText(note.noteName, mx, my);
   }
 
-  // 11. Acoustic Ripples (1-2 crisp hairline rings from impact point)
-  for (const rp of world.ripples) {
-    const t = Math.min(1, rp.age / rp.duration);
-    const ease = 1 - Math.pow(1 - t, 3);
-    const alpha = Math.max(0, (1 - t) * 0.65);
-
-    ctx.save();
-    ctx.globalAlpha = alpha;
-    ctx.strokeStyle = rp.color;
-    ctx.lineWidth = 1.6;
-    ctx.beginPath();
-    ctx.arc(rp.x, rp.y, 8 + rp.maxRadius * ease, 0, Math.PI * 2);
-    ctx.stroke();
-
-    if (rp.doubleRing && t > 0.14) {
-      const t2 = Math.min(1, (t - 0.14) / 0.86);
-      const ease2 = 1 - Math.pow(1 - t2, 3);
-      ctx.globalAlpha = Math.max(0, (1 - t2) * 0.42);
-      ctx.beginPath();
-      ctx.arc(rp.x, rp.y, 8 + rp.maxRadius * 0.72 * ease2, 0, Math.PI * 2);
-      ctx.stroke();
-    }
-
-    // Crisp warm sunlit studio impact spark
-    if (rp.age < 0.14) {
-      const st = rp.age / 0.14;
-      const sAlpha = Math.pow(1 - st, 1.4);
-      const rayLen = 14 + 4 * Math.sin(st * Math.PI);
-      const rayW = 2.4 * (1 - st * 0.55);
-
-      const flashGrad = ctx.createRadialGradient(rp.x, rp.y, 0, rp.x, rp.y, 18);
-      flashGrad.addColorStop(0, `rgba(255, 248, 224, ${0.85 * sAlpha})`);
-      flashGrad.addColorStop(0.5, `rgba(255, 240, 196, ${0.32 * sAlpha})`);
-      flashGrad.addColorStop(1, "rgba(255, 240, 196, 0)");
-      ctx.globalAlpha = 1;
-      ctx.fillStyle = flashGrad;
-      ctx.beginPath();
-      ctx.arc(rp.x, rp.y, 18, 0, Math.PI * 2);
-      ctx.fill();
-
-      ctx.globalAlpha = 0.92 * sAlpha;
-      ctx.fillStyle = "rgba(255, 248, 228, 0.95)";
-      for (let i = 0; i < 4; i++) {
-        ctx.save();
-        ctx.translate(rp.x, rp.y);
-        ctx.rotate((i * Math.PI) / 2 + Math.PI / 4);
-        ctx.beginPath();
-        ctx.moveTo(0, -rayLen);
-        ctx.lineTo(rayW, 0);
-        ctx.lineTo(0, rayLen);
-        ctx.lineTo(-rayW, 0);
-        ctx.closePath();
-        ctx.fill();
-        ctx.restore();
-      }
-    }
-    ctx.restore();
-  }
-
-  // 12. Marbles (Glossy Obsidian Glass Sphere)
+  // 11. Marbles — Pure Unchanging Brushed-Silver Sphere (zero collision halo/ripples)
   for (const m of world.marbles) {
     const ix = m.prevX + (m.x - m.prevX) * opts.interpAlpha;
     const iy = m.prevY + (m.y - m.prevY) * opts.interpAlpha;
@@ -629,7 +576,7 @@ export function renderWorld(
       iy,
       opts.followedMarbleId === m.id,
       vp.scale,
-      "obsidian"
+      "pearl"
     );
   }
 

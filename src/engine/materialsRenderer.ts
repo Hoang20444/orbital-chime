@@ -26,56 +26,56 @@ interface BarMaterialPalette {
 
 const BAR_PALETTES: Record<MaterialType, BarMaterialPalette> = {
   marimba: {
-    topStop: "#F3CE9A",
-    midStop: "#DDA057",
-    botStop: "#BC7431",
-    bevelDark: "#824C1D",
-    bevelEdge: "#6A3B14",
-    border: "#8A5222",
-    highlight: "rgba(255, 244, 220, 0.72)",
-    grain: "rgba(138, 76, 28, 0.22)",
-    pinOuter: "#9B622C",
-    pinInner: "#F5D9AF",
-    glow: "rgba(255, 236, 198, 0.55)",
+    topStop: "#A3642E",
+    midStop: "#7A481E",
+    botStop: "#563012",
+    bevelDark: "#381D09",
+    bevelEdge: "#291405",
+    border: "#B8783E",
+    highlight: "rgba(255, 228, 186, 0.42)",
+    grain: "rgba(44, 22, 8, 0.34)",
+    pinOuter: "#5E3616",
+    pinInner: "#E0B482",
+    glow: "rgba(255, 190, 92, 0.92)",
   },
   brass: {
-    topStop: "#FAEAAC",
-    midStop: "#D9B14A",
-    botStop: "#AE8321",
-    bevelDark: "#7D5B12",
-    bevelEdge: "#5F440B",
-    border: "#8C6818",
-    highlight: "rgba(255, 253, 236, 0.82)",
-    grain: "rgba(255, 249, 214, 0.42)",
-    pinOuter: "#8A6616",
-    pinInner: "#F9EAA8",
-    glow: "rgba(255, 246, 194, 0.65)",
+    topStop: "#B89234",
+    midStop: "#8A6A1E",
+    botStop: "#614810",
+    bevelDark: "#402E08",
+    bevelEdge: "#2D2004",
+    border: "#CEAA4C",
+    highlight: "rgba(255, 246, 200, 0.52)",
+    grain: "rgba(255, 236, 170, 0.24)",
+    pinOuter: "#614810",
+    pinInner: "#F0D888",
+    glow: "rgba(255, 230, 112, 0.95)",
   },
   ceramic: {
-    topStop: "#CBECE2",
-    midStop: "#76BCA9",
-    botStop: "#4C9280",
-    bevelDark: "#31695B",
-    bevelEdge: "#255247",
-    border: "#3A7566",
-    highlight: "rgba(255, 255, 255, 0.78)",
-    grain: "rgba(255, 255, 255, 0.36)",
-    pinOuter: "#3A7566",
-    pinInner: "#E9F8F3",
-    glow: "rgba(220, 255, 246, 0.62)",
+    topStop: "#3E8C7C",
+    midStop: "#276458",
+    botStop: "#19453D",
+    bevelDark: "#0F2E28",
+    bevelEdge: "#09201C",
+    border: "#54B09D",
+    highlight: "rgba(205, 255, 244, 0.48)",
+    grain: "rgba(205, 255, 244, 0.22)",
+    pinOuter: "#1D4D44",
+    pinInner: "#BCEEE3",
+    glow: "rgba(92, 248, 220, 0.94)",
   },
   bass: {
-    topStop: "#688CA6",
-    midStop: "#3D5F79",
-    botStop: "#264056",
-    bevelDark: "#162938",
-    bevelEdge: "#0F1D29",
-    border: "#1E364A",
-    highlight: "rgba(218, 234, 247, 0.50)",
-    grain: "rgba(15, 30, 44, 0.30)",
-    pinOuter: "#1A2E3E",
-    pinInner: "#B5CADB",
-    glow: "rgba(176, 212, 240, 0.48)",
+    topStop: "#385E82",
+    midStop: "#223E59",
+    botStop: "#15293D",
+    bevelDark: "#0D1B29",
+    bevelEdge: "#08121C",
+    border: "#4B7AA6",
+    highlight: "rgba(186, 222, 255, 0.42)",
+    grain: "rgba(10, 20, 34, 0.36)",
+    pinOuter: "#162C42",
+    pinInner: "#9EC4E6",
+    glow: "rgba(96, 188, 255, 0.94)",
   },
 };
 
@@ -141,6 +141,7 @@ export function drawOrganicInstrumentBar(
     | "flexVel"
     | "hitNx"
     | "hitNy"
+    | "glow"
   >,
   halfThick: number,
   isSelected: boolean,
@@ -177,10 +178,13 @@ export function drawOrganicInstrumentBar(
   const localPerpX = -Math.sin(angle);
   const localPerpY = Math.cos(angle);
   const bendY = flex * (hnx * localPerpX + hny * localPerpY);
-  const hitGlow = Math.min(
-    1,
-    Math.abs(flex) * 0.22 + Math.abs(bar.flexVel ?? 0) * 0.0055
-  );
+  const rawGlow = bar.silent
+    ? 0
+    : Math.max(
+        bar.glow ?? 0,
+        Math.min(1, Math.abs(flex) * 0.22 + Math.abs(bar.flexVel ?? 0) * 0.0055)
+      );
+  const hitGlow = rawGlow > 0 ? Math.pow(rawGlow, 0.68) : 0;
 
   // Consistent top-left directional shadow & depth projection in bar-local coords
   const cosA = Math.cos(angle);
@@ -395,22 +399,31 @@ export function drawOrganicInstrumentBar(
   );
   ctx.stroke();
 
-  // Collision illumination flash synchronized to physics impact
-  if (hitGlow > 0.03) {
-    ctx.globalAlpha = Math.min(0.68, hitGlow);
+  // Bulb-like illumination when struck by the marble (lights up the bar itself!)
+  if (hitGlow > 0.03 && !bar.silent) {
+    ctx.save();
+    ctx.shadowColor = pal.glow;
+    ctx.shadowBlur = 18 * hitGlow;
+    ctx.globalAlpha = Math.min(0.88, hitGlow * 0.9);
     ctx.fillStyle = pal.glow;
     traceOrganicBarPath(ctx, halfLen, halfThick, bendY, 0);
     ctx.fill();
-    ctx.globalAlpha = 1;
+    ctx.restore();
   }
 
   ctx.restore();
 
-  // Outer refined hairline contour
-  ctx.strokeStyle = isSelected ? TOKENS.ink : pal.border;
-  ctx.lineWidth = isSelected ? 2.1 : 1.15;
+  // Outer refined hairline contour (glows brightly when lit)
+  ctx.save();
+  if (hitGlow > 0.04 && !bar.silent) {
+    ctx.shadowColor = pal.glow;
+    ctx.shadowBlur = 14 * hitGlow;
+  }
+  ctx.strokeStyle = isSelected ? "#56D8FF" : hitGlow > 0.08 ? pal.glow : pal.border;
+  ctx.lineWidth = isSelected ? 2.1 : 1.2;
   traceOrganicBarPath(ctx, halfLen, halfThick, bendY, 0);
   ctx.stroke();
+  ctx.restore();
 
   // Layer 6: Sculpted recessed mounting sockets near organic ends
   const socketX = Math.max(8, halfLen - Math.max(8, endR * 1.15));
@@ -455,43 +468,40 @@ export function drawOrganicBumper(
   isHovered: boolean
 ): void {
   const pulse = bmp.pulse ?? 0;
-  // Elastic squash/expand synchronized cleanly to bumper_hit
-  const r = bmp.radius * (1 + pulse * 0.16);
+  const bulb = pulse > 0 ? Math.pow(pulse, 0.65) : 0;
+  const r = bmp.radius * (1 + pulse * 0.1);
 
-  // Layer 1: Soft ambient contact shadow
-  ctx.fillStyle = "rgba(28, 35, 33, 0.11)";
+  // Contact shadow
+  ctx.fillStyle = "rgba(3, 6, 12, 0.42)";
   ctx.beginPath();
   ctx.arc(bmp.x + 2.4, bmp.y + 4.8, r + 1.5, 0, Math.PI * 2);
   ctx.fill();
 
-  // Impact radial pulse aura
-  if (pulse > 0.04) {
-    ctx.strokeStyle = `rgba(232, 114, 68, ${(pulse * 0.55).toFixed(3)})`;
-    ctx.lineWidth = 2.2;
-    ctx.beginPath();
-    ctx.arc(bmp.x, bmp.y, r + (1 - pulse) * 14, 0, Math.PI * 2);
-    ctx.stroke();
-  }
-
-  // Layer 2: Lower depth rim
-  ctx.fillStyle = "#B84928";
+  // Lower metallic rim
+  ctx.fillStyle = "#121A26";
   ctx.beginPath();
   ctx.arc(bmp.x + 0.6, bmp.y + 2.1, r, 0, Math.PI * 2);
   ctx.fill();
 
-  // Layer 3 & 4: Elastic outer coral-cream collar + warm raised tangerine dome
+  // Brushed graphite outer collar
   const collarGrad = ctx.createLinearGradient(bmp.x - r, bmp.y - r, bmp.x + r, bmp.y + r);
-  collarGrad.addColorStop(0, "#FAF5EE");
-  collarGrad.addColorStop(1, "#DED9CF");
+  collarGrad.addColorStop(0, "#334155");
+  collarGrad.addColorStop(1, "#1B2432");
   ctx.fillStyle = collarGrad;
-  ctx.strokeStyle = isSelected || isHovered ? TOKENS.ink : "#9A8F82";
+  ctx.strokeStyle = isSelected || isHovered ? "#56D8FF" : bulb > 0.08 ? "#FF8F5A" : "#475973";
   ctx.lineWidth = isSelected ? 2.2 : 1.3;
   ctx.beginPath();
   ctx.arc(bmp.x, bmp.y, r, 0, Math.PI * 2);
   ctx.fill();
   ctx.stroke();
 
+  // Inner dome: dark ember at rest -> bright glowing sunset lamp on impact!
   const innerR = Math.max(6, r - 3.8);
+  ctx.save();
+  if (bulb > 0.04) {
+    ctx.shadowColor = "rgba(255, 118, 56, 0.9)";
+    ctx.shadowBlur = 18 * bulb;
+  }
   const domeGrad = ctx.createRadialGradient(
     bmp.x - innerR * 0.32,
     bmp.y - innerR * 0.34,
@@ -500,31 +510,35 @@ export function drawOrganicBumper(
     bmp.y,
     innerR
   );
-  domeGrad.addColorStop(0, "#FFB182");
-  domeGrad.addColorStop(0.55, "#EC7446");
-  domeGrad.addColorStop(1, "#BA4424");
+  if (bulb > 0.05) {
+    domeGrad.addColorStop(0, "#FFF0D6");
+    domeGrad.addColorStop(0.5, "#FF8A4C");
+    domeGrad.addColorStop(1, "#D9481E");
+  } else {
+    domeGrad.addColorStop(0, "#A84E36");
+    domeGrad.addColorStop(0.55, "#742F1F");
+    domeGrad.addColorStop(1, "#4A1B11");
+  }
 
   ctx.fillStyle = domeGrad;
   ctx.beginPath();
   ctx.arc(bmp.x, bmp.y, innerR, 0, Math.PI * 2);
   ctx.fill();
+  ctx.restore();
 
-  // Layer 5: Elastic glossy top-left specular crescent
-  ctx.strokeStyle = "rgba(255, 245, 236, 0.78)";
-  ctx.lineWidth = 2.1;
+  ctx.strokeStyle =
+    bulb > 0.05 ? "rgba(255, 245, 224, 0.92)" : "rgba(255, 200, 176, 0.36)";
+  ctx.lineWidth = 1.8;
   ctx.lineCap = "round";
   ctx.beginPath();
-  ctx.arc(bmp.x, bmp.y, innerR - 2.6, Math.PI * 1.06, Math.PI * 1.66);
+  ctx.arc(bmp.x, bmp.y, innerR - 2.4, Math.PI * 1.06, Math.PI * 1.66);
   ctx.stroke();
 
-  // Layer 6: Raised pearl center dome + subtle rim
-  ctx.fillStyle = "rgba(255, 250, 245, 0.92)";
-  ctx.strokeStyle = "rgba(186, 68, 36, 0.45)";
-  ctx.lineWidth = 1.1;
+  ctx.fillStyle =
+    bulb > 0.05 ? "rgba(255, 252, 240, 0.98)" : "rgba(232, 168, 145, 0.45)";
   ctx.beginPath();
-  ctx.arc(bmp.x, bmp.y, Math.max(4, innerR * 0.34), 0, Math.PI * 2);
+  ctx.arc(bmp.x, bmp.y, Math.max(3.6, innerR * 0.32), 0, Math.PI * 2);
   ctx.fill();
-  ctx.stroke();
 }
 
 export function drawIridescentPrism(
@@ -756,56 +770,24 @@ export function drawPremiumMarble(
   iy: number,
   isFollowed: boolean,
   scale: number,
-  variant: MarbleVariant = "obsidian"
+  _variant: MarbleVariant = "pearl"
 ): void {
-  // 1. Subtle tapered motion trail
-  if (m.trail.length > 1) {
-    for (let i = 0; i < m.trail.length; i++) {
-      const pt = m.trail[i];
-      const ratio = (i + 1) / (m.trail.length + 1);
-      ctx.fillStyle = `rgba(20, 26, 28, ${(ratio * 0.14).toFixed(3)})`;
-      ctx.beginPath();
-      ctx.arc(pt.x, pt.y, m.radius * (0.28 + ratio * 0.38), 0, Math.PI * 2);
-      ctx.fill();
-    }
-  }
-
-  // 2. Soft motion-reactive contact shadow
-  const impactTighten = 1 - m.squash * 0.55;
-  const shDx = (2.1 + Math.max(-2, Math.min(2, m.vx * 0.004))) * impactTighten;
-  const shDy = (4.2 + Math.max(-1.5, Math.min(2.6, m.vy * 0.004))) * impactTighten;
-  ctx.fillStyle = `rgba(20, 26, 28, ${(0.11 + m.squash * 0.07).toFixed(3)})`;
+  // Pure unchanging brushed-silver / pearl-steel sphere — no halo, no glow, no trail, no squash!
+  ctx.fillStyle = "rgba(3, 6, 12, 0.36)";
   ctx.beginPath();
-  ctx.ellipse(
-    ix + shDx,
-    iy + shDy,
-    m.radius * (0.95 + m.squash * 0.12),
-    m.radius * (0.82 - m.squash * 0.08),
-    0,
-    0,
-    Math.PI * 2
-  );
+  ctx.ellipse(ix + 2.2, iy + 4.4, m.radius * 0.94, m.radius * 0.8, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  // Optional follow-camera target reticle
   if (isFollowed) {
-    ctx.strokeStyle = "rgba(206, 91, 70, 0.58)";
-    ctx.lineWidth = 1.7 / Math.max(0.75, Math.min(1.6, scale));
+    ctx.strokeStyle = "rgba(86, 216, 255, 0.58)";
+    ctx.lineWidth = 1.6 / Math.max(0.75, Math.min(1.6, scale));
     ctx.beginPath();
     ctx.arc(ix, iy, m.radius + 5.5, 0, Math.PI * 2);
     ctx.stroke();
   }
 
-  // 3. Spherical glossy marble body
   ctx.save();
   ctx.translate(ix, iy);
-  if (m.squash > 0.02) {
-    ctx.rotate(m.squashAngle);
-    const sx = 1 - m.squash * 0.11;
-    const sy = 1 + m.squash * 0.11;
-    ctx.scale(sx, sy);
-    ctx.rotate(-m.squashAngle);
-  }
 
   const r = m.radius;
   const sphereGrad = ctx.createRadialGradient(
@@ -816,96 +798,38 @@ export function drawPremiumMarble(
     0,
     r
   );
-
-  if (variant === "obsidian") {
-    sphereGrad.addColorStop(0, "#4B565E");
-    sphereGrad.addColorStop(0.28, "#1E2429");
-    sphereGrad.addColorStop(0.76, "#090B0D");
-    sphereGrad.addColorStop(1, "#2A333A");
-  } else if (variant === "amber") {
-    sphereGrad.addColorStop(0, "#FFE9A8");
-    sphereGrad.addColorStop(0.35, "#E09734");
-    sphereGrad.addColorStop(0.85, "#8E4A10");
-    sphereGrad.addColorStop(1, "#C97A26");
-  } else if (variant === "echo") {
-    sphereGrad.addColorStop(0, "#B8F0E2");
-    sphereGrad.addColorStop(0.35, "#3E8B7D");
-    sphereGrad.addColorStop(0.85, "#153D37");
-    sphereGrad.addColorStop(1, "#35786C");
-  } else {
-    sphereGrad.addColorStop(0, "#FFFFFF");
-    sphereGrad.addColorStop(0.4, "#D7DEE2");
-    sphereGrad.addColorStop(0.88, "#8F9AA2");
-    sphereGrad.addColorStop(1, "#B8C4CC");
-  }
+  sphereGrad.addColorStop(0, "#FFFFFF");
+  sphereGrad.addColorStop(0.38, "#D4DFEC");
+  sphereGrad.addColorStop(0.84, "#7D8FA4");
+  sphereGrad.addColorStop(1, "#9EB0C4");
 
   ctx.fillStyle = sphereGrad;
   ctx.beginPath();
   ctx.arc(0, 0, r, 0, Math.PI * 2);
   ctx.fill();
 
-  // Clipped multi-layer reflections (creates convincing obsidian black glass sphere)
   ctx.save();
   ctx.beginPath();
   ctx.arc(0, 0, r, 0, Math.PI * 2);
   ctx.clip();
 
-  // Subtle ambient studio reflection arc + cyan kinetic core glow on obsidian marble
-  if (variant === "obsidian") {
-    const coreEnergy = ctx.createRadialGradient(0, 0, 0.4, 0, 0, r * 0.62);
-    coreEnergy.addColorStop(0, "rgba(126, 232, 255, 0.46)");
-    coreEnergy.addColorStop(0.55, "rgba(92, 138, 248, 0.18)");
-    coreEnergy.addColorStop(1, "rgba(92, 138, 248, 0)");
-    ctx.fillStyle = coreEnergy;
-    ctx.beginPath();
-    ctx.arc(0, 0, r * 0.62, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  ctx.strokeStyle =
-    variant === "obsidian"
-      ? "rgba(138, 224, 248, 0.38)"
-      : "rgba(255, 255, 255, 0.42)";
-  ctx.lineWidth = 1.4;
-  ctx.lineCap = "round";
-  ctx.beginPath();
-  ctx.arc(0, 0, r - 1.3, 0.18 * Math.PI, 0.62 * Math.PI);
-  ctx.stroke();
-
-  // Subtle soft upper-left inner dome reflection
-  const velShift = Math.max(-0.5, Math.min(0.5, m.vx * 0.0012));
+  // Crisp upper-left metallic studio specular highlight
   ctx.save();
-  ctx.translate(-r * 0.34 + velShift, -r * 0.35);
+  ctx.translate(-r * 0.32, -r * 0.34);
   ctx.rotate(-0.62);
-  const specGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, r * 0.42);
-  specGrad.addColorStop(0, "rgba(255, 255, 255, 0.96)");
-  specGrad.addColorStop(0.65, "rgba(255, 255, 255, 0.65)");
+  const specGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, r * 0.38);
+  specGrad.addColorStop(0, "rgba(255, 255, 255, 0.95)");
+  specGrad.addColorStop(0.65, "rgba(255, 255, 255, 0.52)");
   specGrad.addColorStop(1, "rgba(255, 255, 255, 0)");
   ctx.fillStyle = specGrad;
   ctx.beginPath();
-  ctx.ellipse(0, 0, r * 0.38, r * 0.24, 0, 0, Math.PI * 2);
+  ctx.ellipse(0, 0, r * 0.34, r * 0.22, 0, 0, Math.PI * 2);
   ctx.fill();
   ctx.restore();
 
-  // Crisp secondary pinpoint reflection
-  ctx.fillStyle = "rgba(255, 255, 255, 0.82)";
-  ctx.beginPath();
-  ctx.arc(r * 0.14 + velShift * 0.6, -r * 0.48, Math.max(0.9, r * 0.12), 0, Math.PI * 2);
-  ctx.fill();
-
-  // Faint lower-right warm studio bounce glint
-  ctx.fillStyle = "rgba(235, 240, 244, 0.24)";
-  ctx.beginPath();
-  ctx.ellipse(r * 0.34, r * 0.38, r * 0.22, r * 0.12, -0.5, 0, Math.PI * 2);
-  ctx.fill();
-
   ctx.restore();
 
-  // Crisp outer glass edge hairline
-  ctx.strokeStyle =
-    variant === "obsidian"
-      ? "rgba(8, 11, 14, 0.88)"
-      : "rgba(28, 35, 33, 0.45)";
+  ctx.strokeStyle = "rgba(15, 23, 36, 0.72)";
   ctx.lineWidth = 0.85;
   ctx.beginPath();
   ctx.arc(0, 0, r, 0, Math.PI * 2);

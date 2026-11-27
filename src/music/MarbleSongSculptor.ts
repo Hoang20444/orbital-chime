@@ -1191,6 +1191,7 @@ function buildChainSculpture(
         flexVel: undefined,
         hitNx: undefined,
         hitNy: undefined,
+        glow: undefined,
       })),
     bumpers: chainWorld.bumpers.map((b) => ({ ...b, pulse: undefined })),
     rails: chainWorld.rails.map((r) => ({
@@ -1305,15 +1306,15 @@ export function sculptMarbleSong(
         chosen = verifySingleChainSculpture(song, noMidRails)
           ? noMidRails
           : buildChainSculpture(
-              song,
-              chain,
-              cIdx,
-              masterTopY,
-              yPerBeat,
-              timbreOverride,
-              false,
-              false
-            );
+            song,
+            chain,
+            cIdx,
+            masterTopY,
+            yPerBeat,
+            timbreOverride,
+            false,
+            false
+          );
       }
     }
 

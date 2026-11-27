@@ -502,7 +502,8 @@ export const SongStudioModal: React.FC<SongStudioModalProps> = ({
         position: "fixed",
         inset: 0,
         zIndex: 60,
-        backgroundColor: "rgba(28, 35, 33, 0.36)",
+        backgroundColor: "rgba(4, 8, 15, 0.68)",
+        backdropFilter: "blur(6px)",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
@@ -515,10 +516,10 @@ export const SongStudioModal: React.FC<SongStudioModalProps> = ({
         style={{
           width: "min(960px, 100%)",
           maxHeight: "min(86dvh, 720px)",
-          backgroundColor: "#F7F8F5",
+          backgroundColor: "#131B28",
           border: "1px solid var(--border-strong)",
           borderRadius: 18,
-          boxShadow: "0 20px 48px rgba(28, 35, 33, 0.2)",
+          boxShadow: "0 24px 56px rgba(2, 6, 12, 0.65)",
           display: "flex",
           flexDirection: "column",
           overflow: "hidden",
@@ -529,7 +530,7 @@ export const SongStudioModal: React.FC<SongStudioModalProps> = ({
           style={{
             padding: "12px 18px",
             borderBottom: "1px solid var(--border)",
-            backgroundColor: "#ECEEE8",
+            backgroundColor: "#0E1520",
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
@@ -544,7 +545,7 @@ export const SongStudioModal: React.FC<SongStudioModalProps> = ({
             <div
               style={{
                 display: "flex",
-                backgroundColor: "#E0E3DB",
+                backgroundColor: "#182334",
                 borderRadius: 10,
                 padding: 3,
                 gap: 2,
@@ -563,8 +564,8 @@ export const SongStudioModal: React.FC<SongStudioModalProps> = ({
                   fontSize: 12,
                   fontWeight: 600,
                   cursor: "pointer",
-                  backgroundColor: tab === "compose" ? "#FFFFFF" : "transparent",
-                  color: tab === "compose" ? "var(--ink)" : "var(--slate)",
+                  backgroundColor: tab === "compose" ? "#263852" : "transparent",
+                  color: tab === "compose" ? "#F0F6FC" : "var(--slate)",
                 }}
               >
                 {locale === "vi" ? "Piano Roll (Soạn nhạc)" : "Compose (Piano Roll)"}
@@ -582,8 +583,8 @@ export const SongStudioModal: React.FC<SongStudioModalProps> = ({
                   fontSize: 12,
                   fontWeight: 600,
                   cursor: "pointer",
-                  backgroundColor: tab === "import" ? "#FFFFFF" : "transparent",
-                  color: tab === "import" ? "var(--ink)" : "var(--slate)",
+                  backgroundColor: tab === "import" ? "#263852" : "transparent",
+                  color: tab === "import" ? "#F0F6FC" : "var(--slate)",
                 }}
               >
                 {locale === "vi" ? "Nhập nhạc MP3 / WAV" : "Import MP3 / Audio"}

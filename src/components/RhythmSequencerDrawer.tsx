@@ -163,7 +163,7 @@ export const RhythmSequencerDrawer: React.FC<RhythmSequencerDrawerProps> = ({
             }
             style={{
               border: "1px solid var(--border)",
-              backgroundColor: "#FFFFFF",
+              backgroundColor: "#182334",
               borderRadius: 8,
               padding: "4px 8px",
               fontSize: 12,
@@ -187,7 +187,7 @@ export const RhythmSequencerDrawer: React.FC<RhythmSequencerDrawerProps> = ({
             className="mono"
             style={{
               border: "1px solid var(--border)",
-              backgroundColor: "#FFFFFF",
+              backgroundColor: "#182334",
               borderRadius: 8,
               padding: "4px 7px",
               fontSize: 11.5,
@@ -210,7 +210,7 @@ export const RhythmSequencerDrawer: React.FC<RhythmSequencerDrawerProps> = ({
             className="mono"
             style={{
               border: "1px solid var(--border)",
-              backgroundColor: "#FFFFFF",
+              backgroundColor: "#182334",
               borderRadius: 8,
               padding: "4px 7px",
               fontSize: 11.5,
@@ -322,7 +322,7 @@ export const RhythmSequencerDrawer: React.FC<RhythmSequencerDrawerProps> = ({
                   padding: "2px 5px",
                   fontSize: 10,
                   fontWeight: 700,
-                  backgroundColor: tr.muted ? "var(--accent-tint)" : "#F7F8F5",
+                  backgroundColor: tr.muted ? "var(--accent-tint)" : "#182334",
                   color: tr.muted ? "var(--accent)" : "var(--slate)",
                   borderColor: tr.muted ? "var(--accent)" : "var(--border)",
                 }}
@@ -337,9 +337,9 @@ export const RhythmSequencerDrawer: React.FC<RhythmSequencerDrawerProps> = ({
                   padding: "2px 5px",
                   fontSize: 10,
                   fontWeight: 700,
-                  backgroundColor: tr.solo ? "#4D8A78" : "#F7F8F5",
-                  color: tr.solo ? "#F7F8F5" : "var(--slate)",
-                  borderColor: tr.solo ? "#2D5448" : "var(--border)",
+                  backgroundColor: tr.solo ? "#1E6B58" : "#182334",
+                  color: tr.solo ? "#E8FFF9" : "var(--slate)",
+                  borderColor: tr.solo ? "#3AE8C2" : "var(--border)",
                 }}
               >
                 S
@@ -351,13 +351,13 @@ export const RhythmSequencerDrawer: React.FC<RhythmSequencerDrawerProps> = ({
               const isBeatStart = idx % 4 === 0;
               const fillColor = !cell.active
                 ? isBeatStart
-                  ? "#ECEEE8"
-                  : "#F2F4EF"
+                  ? "#1B283C"
+                  : "#141E2E"
                 : cell.accent
-                  ? "#CE5B46"
+                  ? "#F06D4F"
                   : cell.ghost
-                    ? "#9CB3AA"
-                    : "#48687E";
+                    ? "#386B7A"
+                    : "#4898E8";
 
               return (
                 <button
@@ -373,9 +373,9 @@ export const RhythmSequencerDrawer: React.FC<RhythmSequencerDrawerProps> = ({
                     height: 22,
                     borderRadius: 5,
                     border: isHead
-                      ? "1.5px solid #1C2321"
+                      ? "1.5px solid #56D8FF"
                       : cell.active
-                        ? "1px solid rgba(28,35,33,0.28)"
+                        ? "1px solid rgba(255,255,255,0.22)"
                         : "1px solid var(--border)",
                     backgroundColor: fillColor,
                     opacity: tr.muted ? 0.45 : 1,

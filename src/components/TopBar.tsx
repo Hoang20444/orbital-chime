@@ -88,14 +88,14 @@ export const TopBar: React.FC<TopBarProps> = ({
   }, []);
 
   const switchPill = (active: boolean): React.CSSProperties => ({
-    border: "none",
-    backgroundColor: active ? "#FFFFFF" : "transparent",
-    color: active ? "var(--ink)" : "var(--slate)",
+    border: active ? "1px solid rgba(72, 214, 247, 0.55)" : "1px solid transparent",
+    backgroundColor: active ? "#1B2940" : "transparent",
+    color: active ? "#F0F6FC" : "var(--slate)",
     fontWeight: active ? 600 : 500,
     fontSize: 12.5,
     padding: "4px 11px",
     borderRadius: 8,
-    boxShadow: active ? "0 1px 0 rgba(28,35,33,0.10)" : "none",
+    boxShadow: active ? "0 2px 8px rgba(2, 6, 12, 0.4)" : "none",
   });
 
   return (
@@ -130,14 +130,16 @@ export const TopBar: React.FC<TopBarProps> = ({
             alignItems: "center",
             gap: 8,
             backgroundColor: "var(--tray)",
+            backdropFilter: "blur(14px)",
             border: "1px solid var(--border-strong)",
             borderRadius: 11,
             padding: "5px 11px",
+            boxShadow: "0 6px 18px rgba(2, 6, 12, 0.35)",
           }}
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-            <circle cx="12" cy="12" r="9" stroke="#1C2321" strokeWidth="2.3" />
-            <circle cx="12" cy="12" r="4" fill="#CE5B46" />
+            <circle cx="12" cy="12" r="9" stroke="#6FE5FF" strokeWidth="2.2" />
+            <circle cx="12" cy="12" r="4" fill="#F06D4F" />
           </svg>
           <span style={{ fontWeight: 700, fontSize: 13.5, letterSpacing: "-0.01em" }}>
             {t.appName}
@@ -147,11 +149,13 @@ export const TopBar: React.FC<TopBarProps> = ({
         <div
           style={{
             display: "flex",
-            backgroundColor: "var(--tray-well)",
+            backgroundColor: "rgba(13, 19, 29, 0.9)",
+            backdropFilter: "blur(14px)",
             border: "1px solid var(--border-strong)",
             borderRadius: 11,
             padding: 3,
             gap: 2,
+            boxShadow: "0 6px 18px rgba(2, 6, 12, 0.35)",
           }}
         >
           <button
@@ -221,7 +225,8 @@ export const TopBar: React.FC<TopBarProps> = ({
                 onClick={() => setAlbumOpen((v) => !v)}
                 style={{
                   border: "1px solid var(--border)",
-                  background: "#FFFFFF",
+                  background: "#182334",
+                  color: "var(--ink)",
                   padding: "4px 11px",
                   borderRadius: 8,
                   fontSize: 12.5,
@@ -238,7 +243,7 @@ export const TopBar: React.FC<TopBarProps> = ({
                   {locale === "vi" ? currentLevel.titleVi : currentLevel.titleEn}
                 </span>
                 {completedIds.includes(currentLevel.id) && (
-                  <span style={{ color: "#4D8A78", fontWeight: 700 }}>✓</span>
+                  <span style={{ color: "#3AE8C2", fontWeight: 700 }}>✓</span>
                 )}
                 <span style={{ fontSize: 10, color: "var(--slate)" }}>▾</span>
               </button>
@@ -297,9 +302,9 @@ export const TopBar: React.FC<TopBarProps> = ({
                         padding: "7px 10px",
                         borderRadius: 9,
                         border: current
-                          ? "1.5px solid var(--ink)"
+                          ? "1.5px solid #48D6F7"
                           : "1px solid var(--border)",
-                        backgroundColor: current ? "#FFFFFF" : "var(--tray)",
+                        backgroundColor: current ? "rgba(56, 226, 255, 0.12)" : "#172233",
                         display: "flex",
                         flexDirection: "column",
                         gap: 2,
@@ -315,7 +320,7 @@ export const TopBar: React.FC<TopBarProps> = ({
                         <span className="mono" style={{ color: "var(--slate)" }}>
                           Track {String(lvl.trackNumber).padStart(2, "0")}
                         </span>
-                        {done && <span style={{ color: "#4D8A78", fontWeight: 700 }}>✓</span>}
+                        {done && <span style={{ color: "#3AE8C2", fontWeight: 700 }}>✓</span>}
                       </div>
                       <span style={{ fontSize: 12.5, fontWeight: 600 }}>
                         {locale === "vi" ? lvl.titleVi : lvl.titleEn}
@@ -333,9 +338,11 @@ export const TopBar: React.FC<TopBarProps> = ({
               alignItems: "center",
               gap: 7,
               backgroundColor: "var(--tray)",
+              backdropFilter: "blur(14px)",
               border: "1px solid var(--border-strong)",
               borderRadius: 11,
               padding: "4px 8px 4px 11px",
+              boxShadow: "0 6px 18px rgba(2, 6, 12, 0.35)",
             }}
           >
             <span style={{ fontSize: 12, color: "var(--slate)", fontWeight: 600 }}>
@@ -347,7 +354,7 @@ export const TopBar: React.FC<TopBarProps> = ({
               onChange={(e) => onSelectPreset(e.target.value)}
               style={{
                 border: "1px solid var(--border)",
-                backgroundColor: "#FFFFFF",
+                backgroundColor: "#182334",
                 borderRadius: 8,
                 padding: "4px 9px",
                 fontSize: 12.5,
@@ -383,9 +390,11 @@ export const TopBar: React.FC<TopBarProps> = ({
             alignItems: "center",
             gap: 6,
             backgroundColor: "var(--tray)",
+            backdropFilter: "blur(14px)",
             border: "1px solid var(--border-strong)",
             borderRadius: 11,
             padding: "3px 8px",
+            boxShadow: "0 6px 18px rgba(2, 6, 12, 0.35)",
           }}
         >
           <select
@@ -394,7 +403,7 @@ export const TopBar: React.FC<TopBarProps> = ({
             onChange={(e) => onChangeScale(e.target.value as ScaleId)}
             style={{
               border: "1px solid var(--border)",
-              background: "#FFFFFF",
+              background: "#182334",
               borderRadius: 7,
               padding: "3px 8px",
               fontSize: 12,
@@ -473,7 +482,7 @@ export const TopBar: React.FC<TopBarProps> = ({
           onClick={onToggleMute}
           className="hw-btn"
           style={{
-            backgroundColor: muted ? "var(--accent-tint)" : "#F7F8F5",
+            backgroundColor: muted ? "var(--accent-tint)" : "#182334",
             borderColor: muted ? "var(--accent)" : "var(--border-strong)",
             color: muted ? "var(--accent)" : "var(--ink)",
             padding: "5px 10px",

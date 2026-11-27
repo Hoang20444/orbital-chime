@@ -184,7 +184,7 @@ export function resolveMarbleOnDualRail(
 export function stepFixed(world: WorldState, isPlaying: boolean): PhysicsEvent[] {
   const events: PhysicsEvent[] = [];
 
-  // Visual spring oscillation & decay update smoothly every fixed tick
+  // Visual spring oscillation & bulb illumination decay update smoothly every fixed tick
   for (const bar of world.bars) {
     const amp = bar.flexOffset ?? 0;
     const vel = bar.flexVel ?? 0;
@@ -200,19 +200,22 @@ export function stepFixed(world: WorldState, isPlaying: boolean): PhysicsEvent[]
       bar.flexOffset = 0;
       bar.flexVel = 0;
     }
+    if (bar.glow && bar.glow > 0) {
+      bar.glow = Math.max(0, bar.glow - FIXED_DT * 1.55);
+    }
   }
 
   for (const b of world.bumpers) {
-    if (b.pulse && b.pulse > 0) b.pulse = Math.max(0, b.pulse - FIXED_DT * 4.5);
+    if (b.pulse && b.pulse > 0) b.pulse = Math.max(0, b.pulse - FIXED_DT * 2.1);
   }
   for (const s of world.splitters) {
-    if (s.pulse && s.pulse > 0) s.pulse = Math.max(0, s.pulse - FIXED_DT * 4.0);
+    if (s.pulse && s.pulse > 0) s.pulse = Math.max(0, s.pulse - FIXED_DT * 2.0);
   }
   for (const e of world.emitters) {
-    if (e.pulse && e.pulse > 0) e.pulse = Math.max(0, e.pulse - FIXED_DT * 4.5);
+    if (e.pulse && e.pulse > 0) e.pulse = Math.max(0, e.pulse - FIXED_DT * 3.4);
   }
   for (const r of world.rings) {
-    if (r.pulse && r.pulse > 0) r.pulse = Math.max(0, r.pulse - FIXED_DT * 3.0);
+    if (r.pulse && r.pulse > 0) r.pulse = Math.max(0, r.pulse - FIXED_DT * 2.4);
   }
   const rails = world.rails ?? [];
   for (const rail of rails) {
@@ -360,6 +363,9 @@ export function stepFixed(world: WorldState, isPlaying: boolean): PhysicsEvent[]
               bar.hitNx = -nx;
               bar.hitNy = -ny;
               bar.flexVel = Math.min(260, 75 + impactSpeed * 0.36);
+              if (!bar.silent) {
+                bar.glow = 1;
+              }
 
               const wasSilentCue = Boolean(m.silentCue);
               if (m.cueTargetId === bar.id) {

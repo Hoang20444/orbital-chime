@@ -55,7 +55,7 @@ const PhysicsGlyph: React.FC<{ tool: ToolType }> = ({ tool }) => {
           height: 11,
           borderRadius: 999,
           backgroundColor: TOKENS.accent,
-          border: "1.5px solid #F7F8F5",
+          border: "1.5px solid #2A3B54",
           boxShadow: `0 0 0 1px ${TOKENS.borderStrong}`,
         }}
       />
@@ -109,7 +109,7 @@ const PhysicsGlyph: React.FC<{ tool: ToolType }> = ({ tool }) => {
           strokeLinecap="round"
         />
         {/* Marble resting visibly ON TOP of both rails */}
-        <circle cx="8.5" cy="4.2" r="2.7" fill="#182028" stroke="#8CEBFF" strokeWidth="0.8" />
+        <circle cx="8.5" cy="4.2" r="2.6" fill="#DCE5F0" stroke="#475973" strokeWidth="0.7" />
       </svg>
     );
   }
@@ -187,12 +187,13 @@ export const DockBar: React.FC<DockBarProps> = ({
       {showTip && (
         <div
           style={{
-            backgroundColor: "rgba(247, 248, 245, 0.94)",
-            border: "1px solid var(--border)",
+            backgroundColor: "rgba(16, 24, 38, 0.9)",
+            backdropFilter: "blur(12px)",
+            border: "1px solid var(--border-strong)",
             borderRadius: 999,
-            padding: "4px 13px",
+            padding: "4px 14px",
             fontSize: 12,
-            color: "var(--slate)",
+            color: "var(--ink-soft)",
             fontWeight: 500,
           }}
         >
@@ -209,10 +210,11 @@ export const DockBar: React.FC<DockBarProps> = ({
           justifyContent: "center",
           gap: 8,
           backgroundColor: "var(--tray)",
+          backdropFilter: "blur(16px)",
           border: "1px solid var(--border-strong)",
           borderRadius: 14,
           padding: "6px 9px",
-          boxShadow: "0 8px 20px rgba(28, 35, 33, 0.08)",
+          boxShadow: "0 12px 32px rgba(2, 6, 12, 0.5)",
           maxWidth: "100%",
         }}
       >
@@ -448,9 +450,9 @@ export const DockBar: React.FC<DockBarProps> = ({
                   onClick={onShareLink}
                   className="hw-btn"
                   style={{
-                    backgroundColor: shareCopied ? "#4D8A78" : "#F7F8F5",
-                    borderColor: shareCopied ? "#2D5448" : "var(--border)",
-                    color: shareCopied ? "#F7F8F5" : "var(--ink)",
+                    backgroundColor: shareCopied ? "#1E6B58" : "#182334",
+                    borderColor: shareCopied ? "#3AE8C2" : "var(--border)",
+                    color: shareCopied ? "#E8FFF9" : "var(--ink)",
                     padding: "5px 9px",
                     fontSize: 12.5,
                     fontWeight: 600,
