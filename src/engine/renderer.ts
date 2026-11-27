@@ -97,6 +97,188 @@ export interface RenderOptions {
   followedMarbleId?: number | null;
 }
 
+const WALL_SPILL_RGB: Record<BarPiece["material"], string> = {
+  marimba: "255, 162, 64",
+  brass: "255, 218, 88",
+  ceramic: "52, 245, 206",
+  bass: "76, 168, 255",
+};
+
+function drawObservatoryBackdrop2D(
+  ctx: CanvasRenderingContext2D,
+  worldMinX: number,
+  worldMaxX: number,
+  worldMinY: number,
+  worldMaxY: number,
+  scale: number
+): void {
+  const boardW = worldMaxX - worldMinX;
+  const boardH = worldMaxY - worldMinY;
+
+  // Deep midnight-slate atmospheric gradient
+  const bg = ctx.createLinearGradient(0, worldMinY, 0, worldMaxY);
+  bg.addColorStop(0, "#0D1524");
+  bg.addColorStop(0.5, "#111B2E");
+  bg.addColorStop(1, "#0B121F");
+  ctx.fillStyle = bg;
+  ctx.fillRect(worldMinX, worldMinY, boardW, boardH);
+
+  // Subtle architectural panel grid (80px & 320px)
+  ctx.strokeStyle = "rgba(84, 122, 172, 0.08)";
+  ctx.lineWidth = 1 / scale;
+  const g80StartX = Math.floor(worldMinX / 80) * 80;
+  const g80StartY = Math.floor(worldMinY / 80) * 80;
+  ctx.beginPath();
+  for (let gx = g80StartX; gx <= worldMaxX; gx += 80) {
+    ctx.moveTo(gx, worldMinY);
+    ctx.lineTo(gx, worldMaxY);
+  }
+  for (let gy = g80StartY; gy <= worldMaxY; gy += 80) {
+    ctx.moveTo(worldMinX, gy);
+    ctx.lineTo(worldMaxX, gy);
+  }
+  ctx.stroke();
+
+  ctx.strokeStyle = "rgba(116, 162, 218, 0.14)";
+  const g320StartX = Math.floor(worldMinX / 320) * 320;
+  const g320StartY = Math.floor(worldMinY / 320) * 320;
+  ctx.beginPath();
+  for (let gx = g320StartX; gx <= worldMaxX; gx += 320) {
+    ctx.moveTo(gx, worldMinY);
+    ctx.lineTo(gx, worldMaxY);
+  }
+  for (let gy = g320StartY; gy <= worldMaxY; gy += 320) {
+    ctx.moveTo(worldMinX, gy);
+    ctx.lineTo(worldMaxX, gy);
+  }
+  ctx.stroke();
+
+  // Precision "+" reticles at 160px offsets
+  ctx.strokeStyle = "rgba(148, 192, 240, 0.22)";
+  ctx.beginPath();
+  for (let gx = g320StartX + 160; gx <= worldMaxX; gx += 320) {
+    for (let gy = g320StartY + 160; gy <= worldMaxY; gy += 320) {
+      ctx.moveTo(gx - 4.5, gy);
+      ctx.lineTo(gx + 4.5, gy);
+      ctx.moveTo(gx, gy - 4.5);
+      ctx.lineTo(gx, gy + 4.5);
+    }
+  }
+  ctx.stroke();
+
+  // Orbital Astrolabe concentric medallions tiled gracefully down the stage
+  const medallions = [
+    { x: 500, y: 350, s: 1.0 },
+    { x: 120, y: 740, s: 0.68 },
+    { x: 890, y: 820, s: 0.72 },
+    { x: 490, y: 1260, s: 0.92 },
+    { x: 80, y: 1720, s: 0.66 },
+    { x: 920, y: 1790, s: 0.7 },
+    { x: 500, y: 2220, s: 0.9 },
+    { x: 500, y: 3260, s: 0.88 },
+  ];
+
+  for (let i = 0; i < medallions.length; i++) {
+    const m = medallions[i];
+    const r3 = 340 * m.s;
+    if (m.y + r3 < worldMinY || m.y - r3 > worldMaxY) continue;
+    const r1 = 155 * m.s;
+    const r2 = 245 * m.s;
+
+    ctx.strokeStyle = "rgba(196, 154, 84, 0.18)";
+    ctx.lineWidth = 1.2 / scale;
+    ctx.beginPath();
+    ctx.arc(m.x, m.y, r1, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.strokeStyle = "rgba(82, 156, 214, 0.16)";
+    ctx.beginPath();
+    ctx.arc(m.x, m.y, r2, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.setLineDash([7 / scale, 7 / scale]);
+    ctx.strokeStyle = "rgba(196, 154, 84, 0.14)";
+    ctx.beginPath();
+    ctx.arc(m.x, m.y, r3, i * 0.6, i * 0.6 + Math.PI * 0.62);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(m.x, m.y, r3, i * 0.6 + Math.PI, i * 0.6 + Math.PI * 1.62);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.strokeStyle = "rgba(128, 174, 222, 0.18)";
+    ctx.beginPath();
+    for (let t = 0; t < 24; t++) {
+      const a = (t / 24) * Math.PI * 2;
+      const inn = t % 6 === 0 ? r2 - 11 : r2 - 5;
+      const out = t % 6 === 0 ? r2 + 11 : r2 + 5;
+      ctx.moveTo(m.x + Math.cos(a) * inn, m.y + Math.sin(a) * inn);
+      ctx.lineTo(m.x + Math.cos(a) * out, m.y + Math.sin(a) * out);
+    }
+    ctx.stroke();
+  }
+}
+
+function drawBackwallLightSpills2D(
+  ctx: CanvasRenderingContext2D,
+  world: WorldState
+): void {
+  ctx.save();
+  ctx.globalCompositeOperation = "screen";
+
+  const paintSpill = (x: number, y: number, radius: number, rgb: string, alpha: number) => {
+    const g = ctx.createRadialGradient(x, y, 0, x, y, radius);
+    g.addColorStop(0, `rgba(${rgb}, ${(alpha * 0.54).toFixed(3)})`);
+    g.addColorStop(0.36, `rgba(${rgb}, ${(alpha * 0.26).toFixed(3)})`);
+    g.addColorStop(0.74, `rgba(${rgb}, ${(alpha * 0.07).toFixed(3)})`);
+    g.addColorStop(1, `rgba(${rgb}, 0)`);
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.fill();
+  };
+
+  for (const bar of world.bars) {
+    if (bar.silent) continue;
+    const raw = Math.max(bar.glow ?? 0, Math.min(1, Math.abs(bar.flexOffset ?? 0) * 0.18));
+    if (raw <= 0.03) continue;
+    const bulb = Math.pow(raw, 0.66);
+    const mx = (bar.ax + bar.bx) * 0.5;
+    const my = (bar.ay + bar.by) * 0.5;
+    const len = Math.hypot(bar.bx - bar.ax, bar.by - bar.ay);
+    paintSpill(mx, my, Math.max(145, len * 2.25), WALL_SPILL_RGB[bar.material], bulb);
+  }
+
+  for (const bmp of world.bumpers) {
+    const pulse = bmp.pulse ?? 0;
+    if (pulse <= 0.03) continue;
+    const bulb = Math.pow(pulse, 0.64);
+    paintSpill(bmp.x, bmp.y, bmp.radius * 9.0, "255, 122, 62", bulb);
+  }
+
+  for (const spl of world.splitters) {
+    const pulse = spl.pulse ?? 0;
+    if (pulse <= 0.03) continue;
+    const bulb = Math.pow(pulse, 0.64);
+    paintSpill(spl.x, spl.y, spl.radius * 9.0, "86, 232, 255", bulb);
+  }
+
+  for (const ring of world.rings) {
+    if (ring.charge <= 0.04) continue;
+    paintSpill(ring.x, ring.y, ring.radius * 5.2, "58, 232, 194", ring.charge * 0.9);
+  }
+
+  for (const rail of world.rails ?? []) {
+    const glow = rail.activeGlow ?? 0;
+    if (glow <= 0.04) continue;
+    const geom = buildRailGeometry(rail);
+    const pose = sampleRailPose(geom, rail.pulseT ?? 0.5);
+    paintSpill(pose.point.x, pose.point.y, 155, "56, 226, 255", Math.pow(glow, 0.68) * 0.92);
+  }
+
+  ctx.restore();
+}
+
 function drawTransferRail2D(
   ctx: CanvasRenderingContext2D,
   rail: TransferRailPiece,
@@ -262,26 +444,14 @@ export function renderWorld(
 
   const boardW = worldMaxX - worldMinX;
   const boardH = worldMaxY - worldMinY;
-  ctx.fillStyle = "#0F1724";
-  ctx.beginPath();
-  ctx.roundRect(worldMinX, worldMinY, boardW, boardH, 12 / scale);
-  ctx.fill();
-
   ctx.save();
   ctx.beginPath();
   ctx.roundRect(worldMinX, worldMinY, boardW, boardH, 12 / scale);
   ctx.clip();
 
-  // 2. Full-bleed architectural dot grid across entire expanded canvas
-  ctx.fillStyle = "rgba(86, 114, 150, 0.28)";
-  const step = 25;
-  const startGx = Math.floor(worldMinX / step) * step;
-  const startGy = Math.floor(worldMinY / step) * step;
-  for (let gx = startGx; gx <= worldMaxX; gx += step) {
-    for (let gy = startGy; gy <= worldMaxY; gy += step) {
-      ctx.fillRect(gx - 0.9, gy - 0.9, 1.8, 1.8);
-    }
-  }
+  // 2. Orbital Observatory architectural slate board + astrolabe etchings + bulb backwall light spills!
+  drawObservatoryBackdrop2D(ctx, worldMinX, worldMaxX, worldMinY, worldMaxY, scale);
+  drawBackwallLightSpills2D(ctx, world);
 
   // Subtle 100-unit edge ruler ticks along top and bottom borders
   ctx.strokeStyle = TOKENS.borderStrong;

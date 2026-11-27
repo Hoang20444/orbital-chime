@@ -33,17 +33,24 @@ const BAR_REST_COLORS: Record<MaterialType, number> = {
 };
 
 const BAR_LIT_COLORS: Record<MaterialType, number> = {
-  marimba: 0xffbe6b,
-  brass: 0xffea88,
-  ceramic: 0x74f9df,
-  bass: 0x74c2ff,
+  marimba: 0xffc678,
+  brass: 0xffef96,
+  ceramic: 0x7efce4,
+  bass: 0x7ec8ff,
 };
 
 const BAR_EMISSIVE_COLORS: Record<MaterialType, number> = {
-  marimba: 0xff8c24,
-  brass: 0xffc832,
-  ceramic: 0x1ee6be,
-  bass: 0x2b8aff,
+  marimba: 0xff9228,
+  brass: 0xffcc38,
+  ceramic: 0x22ecc4,
+  bass: 0x3292ff,
+};
+
+const BAR_WALL_LIGHT_COLORS: Record<MaterialType, number> = {
+  marimba: 0xff9e3d,
+  brass: 0xffd85a,
+  ceramic: 0x34f5cf,
+  bass: 0x4ca6ff,
 };
 
 const CORE_COLORS: Record<MaterialType, number> = {
@@ -61,6 +68,7 @@ const LABEL_LIT_CSS: Record<MaterialType, string> = {
 };
 
 const RAIL_CENTER_Z = 2;
+const BACKWALL_Z = -11;
 
 /* ------------------------------------------------------------------ */
 /*  Mesh bookkeeping                                                   */
@@ -70,7 +78,7 @@ interface BarMeshEntry {
   group: THREE.Group;
   body: THREE.Mesh;
   core: THREE.Mesh;
-  lampWash: THREE.Sprite;
+  wallWash: THREE.Mesh;
   pinA: THREE.Mesh;
   pinB: THREE.Mesh;
   material: MaterialType;
@@ -84,13 +92,13 @@ interface BumperMeshEntry {
   collar: THREE.Mesh;
   dome: THREE.Mesh;
   ringTube: THREE.Mesh;
-  lampWash: THREE.Sprite;
+  wallWash: THREE.Mesh;
 }
 
 interface SplitterMeshEntry {
   group: THREE.Group;
   crystal: THREE.Mesh;
-  lampWash: THREE.Sprite;
+  wallWash: THREE.Mesh;
 }
 
 interface EmitterMeshEntry {
@@ -103,6 +111,7 @@ interface RingMeshEntry {
   group: THREE.Group;
   torus: THREE.Mesh;
   core: THREE.Mesh;
+  wallWash: THREE.Mesh;
 }
 
 interface RailMeshEntry {
@@ -113,6 +122,7 @@ interface RailMeshEntry {
   backStrip: THREE.Mesh;
   frontContactSprite: THREE.Sprite;
   backContactSprite: THREE.Sprite;
+  wallWash: THREE.Mesh;
   sig: string;
   geom: RailGeometry;
 }
@@ -122,8 +132,16 @@ interface MarbleMeshEntry {
   sphere: THREE.Mesh;
 }
 
+interface ActiveLampLight {
+  x: number;
+  y: number;
+  color: number;
+  power: number;
+  radius: number;
+}
+
 /* ------------------------------------------------------------------ */
-/*  Helpers                                                            */
+/*  Helpers & Procedural Architectural Textures                        */
 /* ------------------------------------------------------------------ */
 
 function makePillShape(halfLen: number, halfThick: number): THREE.Shape {
@@ -159,29 +177,189 @@ function makeSoftDotTexture(): THREE.CanvasTexture {
   return tex;
 }
 
+/**
+ * Wide, ultra-smooth feathered radial texture for backwall sconce illumination.
+ * Strictly sits flush on the backwall (z = -10.1) behind instruments so the background
+ * visibly catches warm/luminous light without ever creating a halo over the marble.
+ */
+function makeWallWashTexture(): THREE.CanvasTexture {
+  const c = document.createElement("canvas");
+  c.width = 128;
+  c.height = 128;
+  const g = c.getContext("2d")!;
+  const grad = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+  grad.addColorStop(0, "rgba(255, 255, 255, 0.95)");
+  grad.addColorStop(0.22, "rgba(255, 255, 255, 0.62)");
+  grad.addColorStop(0.52, "rgba(255, 255, 255, 0.22)");
+  grad.addColorStop(0.8, "rgba(255, 255, 255, 0.05)");
+  grad.addColorStop(1, "rgba(255, 255, 255, 0)");
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 128, 128);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
 function makeBackdropTexture(): THREE.CanvasTexture {
   const c = document.createElement("canvas");
   c.width = 256;
   c.height = 256;
   const g = c.getContext("2d")!;
   const base = g.createLinearGradient(0, 0, 0, 256);
-  base.addColorStop(0, "#0A0E17");
-  base.addColorStop(0.48, "#101826");
-  base.addColorStop(1, "#090D14");
+  base.addColorStop(0, "#090E18");
+  base.addColorStop(0.5, "#0F1829");
+  base.addColorStop(1, "#080C15");
   g.fillStyle = base;
   g.fillRect(0, 0, 256, 256);
-
-  // Subtle nocturnal studio ambient center lift
-  const glow = g.createRadialGradient(128, 118, 12, 128, 128, 155);
-  glow.addColorStop(0, "rgba(32, 50, 78, 0.34)");
-  glow.addColorStop(0.6, "rgba(18, 28, 44, 0.12)");
-  glow.addColorStop(1, "rgba(8, 12, 20, 0)");
-  g.fillStyle = glow;
-  g.fillRect(0, 0, 256, 256);
-
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
+}
+
+/**
+ * Seamless repeating architectural slate & celestial blueprint tile for the physical 3D backwall.
+ * Reacts realistically to Three.js PointLights whenever nearby musical bars light up!
+ */
+function makeObservatoryWallTextures(): {
+  map: THREE.CanvasTexture;
+  bumpMap: THREE.CanvasTexture;
+} {
+  const size = 512;
+  const c = document.createElement("canvas");
+  c.width = size;
+  c.height = size;
+  const g = c.getContext("2d")!;
+
+  // Deep nocturnal obsidian-slate base so unlit areas stay dark while PointLights pop dramatically
+  g.fillStyle = "#060B14";
+  g.fillRect(0, 0, size, size);
+
+  // Subtle organic slate cloud mottling (seamless wrap)
+  let seed = 4219;
+  const rand = () => {
+    seed = (seed * 1664525 + 1013904223) >>> 0;
+    return seed / 0xffffffff;
+  };
+  for (let i = 0; i < 90; i++) {
+    const x = rand() * size;
+    const y = rand() * size;
+    const r = 36 + rand() * 88;
+    const bright = rand() > 0.5;
+    for (const ox of [-size, 0, size]) {
+      for (const oy of [-size, 0, size]) {
+        if (x + ox + r < 0 || x + ox - r > size || y + oy + r < 0 || y + oy - r > size) {
+          continue;
+        }
+        const rg = g.createRadialGradient(x + ox, y + oy, 2, x + ox, y + oy, r);
+        rg.addColorStop(
+          0,
+          bright ? "rgba(22, 36, 62, 0.16)" : "rgba(2, 4, 10, 0.22)"
+        );
+        rg.addColorStop(1, "rgba(6, 11, 20, 0)");
+        g.fillStyle = rg;
+        g.fillRect(0, 0, size, size);
+      }
+    }
+  }
+
+  // Fine architectural sub-grid (64px) & primary panel seams (256px)
+  g.strokeStyle = "rgba(74, 114, 168, 0.15)";
+  g.lineWidth = 1;
+  for (let p = 0; p < size; p += 64) {
+    g.beginPath();
+    g.moveTo(p + 0.5, 0);
+    g.lineTo(p + 0.5, size);
+    g.moveTo(0, p + 0.5);
+    g.lineTo(size, p + 0.5);
+    g.stroke();
+  }
+
+  g.strokeStyle = "rgba(108, 158, 220, 0.28)";
+  g.lineWidth = 1.25;
+  for (let p = 0; p < size; p += 256) {
+    g.beginPath();
+    g.moveTo(p + 0.5, 0);
+    g.lineTo(p + 0.5, size);
+    g.moveTo(0, p + 0.5);
+    g.lineTo(size, p + 0.5);
+    g.stroke();
+  }
+
+  // Delicate diagonal astronomical sightlines + precision "+" reticles at intersections
+  g.strokeStyle = "rgba(88, 136, 194, 0.11)";
+  g.lineWidth = 1;
+  g.beginPath();
+  g.moveTo(0, 0);
+  g.lineTo(size, size);
+  g.moveTo(size, 0);
+  g.lineTo(0, size);
+  g.stroke();
+
+  // Subtle inlaid micro-ring at tile center (256, 256)
+  g.strokeStyle = "rgba(202, 160, 92, 0.22)";
+  g.lineWidth = 1.15;
+  g.beginPath();
+  g.arc(256, 256, 72, 0, Math.PI * 2);
+  g.stroke();
+  g.setLineDash([4, 6]);
+  g.strokeStyle = "rgba(88, 172, 232, 0.2)";
+  g.beginPath();
+  g.arc(256, 256, 108, 0, Math.PI * 2);
+  g.stroke();
+  g.setLineDash([]);
+
+  // Precision crosshairs at 128px intervals
+  g.strokeStyle = "rgba(148, 196, 246, 0.34)";
+  g.lineWidth = 1.2;
+  for (let gx = 128; gx < size; gx += 256) {
+    for (let gy = 128; gy < size; gy += 256) {
+      g.beginPath();
+      g.moveTo(gx - 5, gy);
+      g.lineTo(gx + 5, gy);
+      g.moveTo(gx, gy - 5);
+      g.lineTo(gx, gy + 5);
+      g.stroke();
+    }
+  }
+
+  const map = new THREE.CanvasTexture(c);
+  map.colorSpace = THREE.SRGBColorSpace;
+  map.wrapS = THREE.RepeatWrapping;
+  map.wrapT = THREE.RepeatWrapping;
+  map.repeat.set(18, 44);
+  map.anisotropy = 4;
+
+  // Matching subtle brushed-slate bump map so grazing PointLights reveal crisp surface grain
+  const bc = document.createElement("canvas");
+  bc.width = 256;
+  bc.height = 256;
+  const bg = bc.getContext("2d")!;
+  bg.fillStyle = "#808080";
+  bg.fillRect(0, 0, 256, 256);
+  for (let i = 0; i < 1800; i++) {
+    const x = rand() * 256;
+    const y = rand() * 256;
+    const v = Math.floor(114 + rand() * 28);
+    bg.fillStyle = `rgb(${v},${v},${v})`;
+    bg.fillRect(x, y, 2, 1);
+  }
+  bg.strokeStyle = "#666666";
+  bg.lineWidth = 1.5;
+  for (let p = 0; p < 256; p += 128) {
+    bg.beginPath();
+    bg.moveTo(p, 0);
+    bg.lineTo(p, 256);
+    bg.moveTo(0, p);
+    bg.lineTo(256, p);
+    bg.stroke();
+  }
+
+  const bumpMap = new THREE.CanvasTexture(bc);
+  bumpMap.wrapS = THREE.RepeatWrapping;
+  bumpMap.wrapT = THREE.RepeatWrapping;
+  bumpMap.repeat.set(36, 88);
+
+  return { map, bumpMap };
 }
 
 function buildDualRodTube(pts: Vec2[], z: number, radius: number): THREE.TubeGeometry {
@@ -223,11 +401,20 @@ export class OrbitalRenderer3D {
   private scene: THREE.Scene;
   private camera: THREE.PerspectiveCamera;
   private sunLight: THREE.DirectionalLight;
-  private shadowPlane: THREE.Mesh;
-  private gridPoints: THREE.Points;
+  private backwallMesh: THREE.Mesh;
+  private wallMap: THREE.CanvasTexture;
+  private wallBumpMap: THREE.CanvasTexture;
+  private wallWashTex: THREE.CanvasTexture;
+  private ornamentGroup: THREE.Group;
+  private starPoints: THREE.Points;
   private envTexture: THREE.Texture;
   private backdrop: THREE.CanvasTexture;
   private softDot: THREE.CanvasTexture;
+
+  // Pool of real 3D PointLights so glowing bars physically illuminate the backwall & nearby objects!
+  private readonly LAMP_LIGHT_COUNT = 16;
+  private lampLights: THREE.PointLight[] = [];
+  private activeLampCandidates: ActiveLampLight[] = [];
 
   private barGeoCache = new Map<string, THREE.ExtrudeGeometry>();
   private coreGeoCache = new Map<string, THREE.BoxGeometry>();
@@ -244,6 +431,7 @@ export class OrbitalRenderer3D {
   private sharedPinGeo = new THREE.CylinderGeometry(2.1, 2.3, 4.5, 14);
   private sharedRailCapGeo = new THREE.SphereGeometry(1, 14, 10);
   private sharedBridgeGeo = new THREE.CylinderGeometry(1, 1, 1, 16);
+  private sharedWashPlaneGeo = new THREE.PlaneGeometry(1, 1);
 
   private marbleMat: THREE.MeshPhysicalMaterial;
   private barMaterials: Record<MaterialType, THREE.MeshPhysicalMaterial>;
@@ -252,6 +440,9 @@ export class OrbitalRenderer3D {
   private brassMat: THREE.MeshPhysicalMaterial;
   private railGraphiteMat: THREE.MeshPhysicalMaterial;
   private railChromeMat: THREE.MeshPhysicalMaterial;
+  private inlayGoldMat: THREE.MeshStandardMaterial;
+  private inlayCyanMat: THREE.MeshStandardMaterial;
+  private constellationLineMat: THREE.LineBasicMaterial;
   private cameraViewMode: "perspective" | "front" = "perspective";
 
   // Subtle nocturnal stardust motes
@@ -278,15 +469,15 @@ export class OrbitalRenderer3D {
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.02;
+    this.renderer.toneMappingExposure = 1.04;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
 
     this.scene = new THREE.Scene();
     this.backdrop = makeBackdropTexture();
     this.scene.background = this.backdrop;
     this.softDot = makeSoftDotTexture();
+    this.wallWashTex = makeWallWashTexture();
 
-    // Studio reflection environment (gives brushed silver marble & metals crisp highlights)
     const pmrem = new THREE.PMREMGenerator(this.renderer);
     this.envTexture = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
     this.scene.environment = this.envTexture;
@@ -294,10 +485,11 @@ export class OrbitalRenderer3D {
 
     this.camera = new THREE.PerspectiveCamera(34, 16 / 9, 10, 6000);
 
-    const hemi = new THREE.HemisphereLight(0xd2e4ff, 0x090d16, 0.42);
+    // Moody nocturnal ambient base so unlit regions stay deep slate while PointLights pop vividly!
+    const hemi = new THREE.HemisphereLight(0xb8d4ff, 0x070b14, 0.38);
     this.scene.add(hemi);
 
-    this.sunLight = new THREE.DirectionalLight(0xeef4ff, 0.88);
+    this.sunLight = new THREE.DirectionalLight(0xe4eeff, 0.72);
     this.sunLight.castShadow = true;
     this.sunLight.shadow.mapSize.set(2048, 2048);
     this.sunLight.shadow.camera.near = 100;
@@ -312,41 +504,107 @@ export class OrbitalRenderer3D {
     this.scene.add(this.sunLight);
     this.scene.add(this.sunLight.target);
 
-    const rimLight = new THREE.DirectionalLight(0x5fa8ff, 0.28);
+    const rimLight = new THREE.DirectionalLight(0x5fa8ff, 0.24);
     rimLight.position.set(600, -500, 320);
     this.scene.add(rimLight);
 
-    // Dark shadow catcher plane
-    this.shadowPlane = new THREE.Mesh(
-      new THREE.PlaneGeometry(8000, 20000),
-      new THREE.ShadowMaterial({ color: 0x020408, opacity: 0.42 })
-    );
-    this.shadowPlane.position.set(500, -4000, -10);
-    this.shadowPlane.receiveShadow = true;
-    this.scene.add(this.shadowPlane);
-
-    // Subtle nocturnal architectural dot grid
-    const dotPositions: number[] = [];
-    for (let gx = -560; gx <= 1760; gx += 40) {
-      for (let gy = -400; gy <= 9600; gy += 40) {
-        dotPositions.push(gx, -gy, -9.5);
-      }
+    // Pool of real 3D PointLights (decay = 0 for predictable world-space studio falloff in Three r187)
+    for (let i = 0; i < this.LAMP_LIGHT_COUNT; i++) {
+      const pl = new THREE.PointLight(0xffffff, 0, 350, 0);
+      pl.castShadow = false;
+      this.scene.add(pl);
+      this.lampLights.push(pl);
     }
-    const dotGeo = new THREE.BufferGeometry();
-    dotGeo.setAttribute("position", new THREE.Float32BufferAttribute(dotPositions, 3));
-    this.gridPoints = new THREE.Points(
-      dotGeo,
-      new THREE.PointsMaterial({
-        color: 0x334763,
-        size: 2.3,
-        sizeAttenuation: true,
-        transparent: true,
-        opacity: 0.42,
-        map: this.softDot,
-        depthWrite: false,
+
+    // Physical 3D Architectural Slate & Blueprint Backwall (receives shadows AND real PointLight!)
+    const wallTex = makeObservatoryWallTextures();
+    this.wallMap = wallTex.map;
+    this.wallBumpMap = wallTex.bumpMap;
+    this.backwallMesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(8000, 20000),
+      new THREE.MeshStandardMaterial({
+        map: this.wallMap,
+        bumpMap: this.wallBumpMap,
+        bumpScale: 2.2,
+        roughness: 0.86,
+        metalness: 0.06,
+        envMapIntensity: 0.02,
       })
     );
-    this.scene.add(this.gridPoints);
+    this.backwallMesh.position.set(500, -4000, BACKWALL_Z);
+    this.backwallMesh.receiveShadow = true;
+    this.scene.add(this.backwallMesh);
+
+    // Metallic brass & cyan architectural inlays flush against the observatory backwall
+    this.inlayGoldMat = new THREE.MeshStandardMaterial({
+      color: 0xd4a454,
+      emissive: new THREE.Color(0x4c3614),
+      emissiveIntensity: 0.35,
+      roughness: 0.34,
+      metalness: 0.76,
+      transparent: true,
+      opacity: 0.44,
+      envMapIntensity: 0.12,
+      depthWrite: false,
+    });
+    this.inlayCyanMat = new THREE.MeshStandardMaterial({
+      color: 0x58a8e2,
+      emissive: new THREE.Color(0x143b62),
+      emissiveIntensity: 0.35,
+      roughness: 0.36,
+      metalness: 0.68,
+      transparent: true,
+      opacity: 0.38,
+      envMapIntensity: 0.1,
+      depthWrite: false,
+    });
+    this.constellationLineMat = new THREE.LineBasicMaterial({
+      color: 0x6ba2d8,
+      transparent: true,
+      opacity: 0.28,
+      depthWrite: false,
+    });
+
+    this.ornamentGroup = new THREE.Group();
+    this.buildObservatoryOrnaments();
+    this.scene.add(this.ornamentGroup);
+
+    // Starlight & coordinate pinpoint nodes across the backwall
+    const starPositions: number[] = [];
+    const starColors: number[] = [];
+    let sSeed = 918273;
+    const sRand = () => {
+      sSeed = (sSeed * 1664525 + 1013904223) >>> 0;
+      return sSeed / 0xffffffff;
+    };
+    for (let i = 0; i < 620; i++) {
+      const sx = -700 + sRand() * 2400;
+      const sy = -300 + sRand() * 6800;
+      starPositions.push(sx, -sy, BACKWALL_Z + 0.6);
+      const warm = sRand() > 0.68;
+      if (warm) {
+        starColors.push(0.95, 0.82, 0.58);
+      } else {
+        starColors.push(0.55, 0.78, 1.0);
+      }
+    }
+    const starGeo = new THREE.BufferGeometry();
+    starGeo.setAttribute("position", new THREE.Float32BufferAttribute(starPositions, 3));
+    starGeo.setAttribute("color", new THREE.Float32BufferAttribute(starColors, 3));
+    this.starPoints = new THREE.Points(
+      starGeo,
+      new THREE.PointsMaterial({
+        size: 3.2,
+        vertexColors: true,
+        transparent: true,
+        opacity: 0.52,
+        map: this.softDot,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        sizeAttenuation: true,
+      })
+    );
+    this.scene.add(this.starPoints);
 
     // Resting instrument materials (moody satin finish; ignite like bulbs on hit!)
     this.barMaterials = {
@@ -452,11 +710,11 @@ export class OrbitalRenderer3D {
     this.dustPoints = new THREE.Points(
       dustGeo,
       new THREE.PointsMaterial({
-        color: 0x7aa2cc,
-        size: 3.4,
+        color: 0x82acce,
+        size: 3.2,
         map: this.softDot,
         transparent: true,
-        opacity: 0.24,
+        opacity: 0.22,
         blending: THREE.AdditiveBlending,
         depthWrite: false,
         sizeAttenuation: true,
@@ -464,6 +722,162 @@ export class OrbitalRenderer3D {
     );
     this.dustPoints.frustumCulled = false;
     this.scene.add(this.dustPoints);
+  }
+
+  /**
+   * Builds tasteful inlaid Orbital Astrolabe concentric rings, harmonic arcs, degree ticks,
+   * and constellation geometry across the backwall so the background feels richly crafted
+   * and catches real colored PointLight reflections when bars light up!
+   */
+  private buildObservatoryOrnaments(): void {
+    const zInlay = BACKWALL_Z + 0.45;
+    const medallions = [
+      { x: 500, y: 350, scale: 1.0 },
+      { x: 120, y: 740, scale: 0.68 },
+      { x: 890, y: 820, scale: 0.72 },
+      { x: 490, y: 1260, scale: 0.92 },
+      { x: 80, y: 1720, scale: 0.66 },
+      { x: 920, y: 1790, scale: 0.7 },
+      { x: 500, y: 2220, scale: 0.9 },
+      { x: 140, y: 2740, scale: 0.68 },
+      { x: 880, y: 2820, scale: 0.68 },
+      { x: 500, y: 3260, scale: 0.88 },
+    ];
+
+    for (let mIdx = 0; mIdx < medallions.length; mIdx++) {
+      const m = medallions[mIdx];
+      const g = new THREE.Group();
+      g.position.set(m.x, -m.y, zInlay);
+
+      const r1 = 155 * m.scale;
+      const r2 = 245 * m.scale;
+      const r3 = 340 * m.scale;
+
+      // Primary brass harmonic ring
+      const ring1 = new THREE.Mesh(
+        new THREE.RingGeometry(r1 - 1.3, r1, 96),
+        this.inlayGoldMat
+      );
+      // Outer cyan-slate orbital ring
+      const ring2 = new THREE.Mesh(
+        new THREE.RingGeometry(r2 - 1.1, r2, 112),
+        this.inlayCyanMat
+      );
+      // Segmented outer astrolabe arcs
+      const arcA = new THREE.Mesh(
+        new THREE.RingGeometry(r3 - 1.2, r3, 64, 1, mIdx * 0.7, Math.PI * 0.58),
+        this.inlayGoldMat
+      );
+      const arcB = new THREE.Mesh(
+        new THREE.RingGeometry(
+          r3 - 1.2,
+          r3,
+          64,
+          1,
+          mIdx * 0.7 + Math.PI,
+          Math.PI * 0.58
+        ),
+        this.inlayCyanMat
+      );
+      g.add(ring1, ring2, arcA, arcB);
+
+      // 24 radial degree ticks + cardinal crosshairs
+      const tickVerts: number[] = [];
+      for (let t = 0; t < 24; t++) {
+        const a = (t / 24) * Math.PI * 2;
+        const inner = t % 6 === 0 ? r2 - 14 : r2 - 6;
+        const outer = t % 6 === 0 ? r2 + 14 : r2 + 6;
+        tickVerts.push(
+          Math.cos(a) * inner,
+          Math.sin(a) * inner,
+          0.1,
+          Math.cos(a) * outer,
+          Math.sin(a) * outer,
+          0.1
+        );
+      }
+      // Subtle center compass cross
+      tickVerts.push(-22 * m.scale, 0, 0.1, 22 * m.scale, 0, 0.1);
+      tickVerts.push(0, -22 * m.scale, 0.1, 0, 22 * m.scale, 0.1);
+
+      const tickGeo = new THREE.BufferGeometry();
+      tickGeo.setAttribute("position", new THREE.Float32BufferAttribute(tickVerts, 3));
+      g.add(new THREE.LineSegments(tickGeo, this.constellationLineMat));
+
+      this.ornamentGroup.add(g);
+    }
+
+    // Delicate constellation polylines & nodes framing the left, center, and right margins
+    const constellations: Vec2[][] = [
+      [
+        { x: -240, y: 160 },
+        { x: -130, y: 240 },
+        { x: -185, y: 370 },
+        { x: -75, y: 470 },
+      ],
+      [
+        { x: 1080, y: 180 },
+        { x: 1190, y: 290 },
+        { x: 1120, y: 430 },
+        { x: 1230, y: 540 },
+      ],
+      [
+        { x: 380, y: 520 },
+        { x: 470, y: 610 },
+        { x: 590, y: 575 },
+        { x: 660, y: 680 },
+      ],
+      [
+        { x: -220, y: 980 },
+        { x: -110, y: 1110 },
+        { x: -170, y: 1250 },
+        { x: -60, y: 1360 },
+      ],
+      [
+        { x: 1090, y: 1040 },
+        { x: 1210, y: 1160 },
+        { x: 1140, y: 1310 },
+        { x: 1245, y: 1420 },
+      ],
+      [
+        { x: 360, y: 1480 },
+        { x: 485, y: 1560 },
+        { x: 585, y: 1510 },
+        { x: 650, y: 1630 },
+      ],
+    ];
+
+    const cVerts: number[] = [];
+    const nodeGeo = new THREE.CircleGeometry(2.6, 12);
+    for (const poly of constellations) {
+      for (let i = 0; i < poly.length; i++) {
+        const pt = poly[i];
+        const dot = new THREE.Mesh(nodeGeo, this.inlayGoldMat);
+        dot.position.set(pt.x, -pt.y, zInlay + 0.15);
+        this.ornamentGroup.add(dot);
+        if (i + 1 < poly.length) {
+          const nxt = poly[i + 1];
+          cVerts.push(pt.x, -pt.y, zInlay + 0.1, nxt.x, -nxt.y, zInlay + 0.1);
+        }
+      }
+    }
+    const cLineGeo = new THREE.BufferGeometry();
+    cLineGeo.setAttribute("position", new THREE.Float32BufferAttribute(cVerts, 3));
+    this.ornamentGroup.add(new THREE.LineSegments(cLineGeo, this.constellationLineMat));
+  }
+
+  private makeWallWashMesh(colorHex: number): THREE.Mesh {
+    const mat = new THREE.MeshBasicMaterial({
+      map: this.wallWashTex,
+      color: colorHex,
+      transparent: true,
+      opacity: 0,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    const mesh = new THREE.Mesh(this.sharedWashPlaneGeo, mat);
+    mesh.position.z = BACKWALL_Z + 0.9;
+    return mesh;
   }
 
   /* -------------------------------------------------------------- */
@@ -586,11 +1000,10 @@ export class OrbitalRenderer3D {
       const midY = (bar.ay + bar.by) * 0.5;
       const flex = bar.flexOffset ?? 0;
 
-      // Bulb illumination curve: quick bright turn-on with smooth warm filament fade
       const rawGlow = bar.glow ?? 0;
       const flexGlow = Math.min(1, Math.abs(flex) * 0.14);
       const bulb = bar.silent ? 0 : Math.max(rawGlow, flexGlow);
-      const bulbEase = bulb > 0 ? Math.pow(bulb, 0.68) : 0;
+      const bulbEase = bulb > 0 ? Math.pow(bulb, 0.66) : 0;
       const qLen = Math.round(len);
 
       let entry = this.barMeshes.get(bar.id);
@@ -611,31 +1024,21 @@ export class OrbitalRenderer3D {
         const core = new THREE.Mesh(this.getCoreGeometry(halfLen), coreMat);
         core.position.set(0, 0, depth * 0.5 + 2.6);
 
-        // Soft underside lamp wash cast strictly behind the bar itself when lit
-        const lampWash = new THREE.Sprite(
-          new THREE.SpriteMaterial({
-            map: this.softDot,
-            color: BAR_EMISSIVE_COLORS[bar.material],
-            transparent: true,
-            opacity: 0,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false,
-          })
-        );
-        lampWash.position.set(0, 0, -depth * 0.5 - 2);
+        const wallWash = this.makeWallWashMesh(BAR_WALL_LIGHT_COLORS[bar.material]);
+        this.scene.add(wallWash);
 
         const pinA = new THREE.Mesh(this.sharedPinGeo, this.pinMaterial);
         pinA.rotation.x = Math.PI * 0.5;
         const pinB = new THREE.Mesh(this.sharedPinGeo, this.pinMaterial);
         pinB.rotation.x = Math.PI * 0.5;
 
-        group.add(lampWash, body, core, pinA, pinB);
+        group.add(body, core, pinA, pinB);
         this.scene.add(group);
         entry = {
           group,
           body,
           core,
-          lampWash,
+          wallWash,
           pinA,
           pinB,
           material: bar.material,
@@ -650,7 +1053,6 @@ export class OrbitalRenderer3D {
         entry.body.geometry = this.getBarGeometry(halfLen, halfThick, depth);
         entry.core.geometry = this.getCoreGeometry(halfLen);
         entry.core.position.z = depth * 0.5 + 2.6;
-        entry.lampWash.scale.set(len * 1.38, spec.thickness * 3.1, 1);
         const pinX = Math.max(4, halfLen - 8);
         entry.pinA.position.set(-pinX, 0, depth * 0.5 + 2.2);
         entry.pinB.position.set(pinX, 0, depth * 0.5 + 2.2);
@@ -658,8 +1060,8 @@ export class OrbitalRenderer3D {
           const srcMat = bar.silent ? this.silentMaterial : this.barMaterials[bar.material];
           (entry.body.material as THREE.MeshPhysicalMaterial).copy(srcMat);
           (entry.core.material as THREE.MeshBasicMaterial).color.setHex(CORE_COLORS[bar.material]);
-          (entry.lampWash.material as THREE.SpriteMaterial).color.setHex(
-            BAR_EMISSIVE_COLORS[bar.material]
+          (entry.wallWash.material as THREE.MeshBasicMaterial).color.setHex(
+            BAR_WALL_LIGHT_COLORS[bar.material]
           );
         }
         entry.cachedLen = qLen;
@@ -672,12 +1074,12 @@ export class OrbitalRenderer3D {
       if (!bar.silent) {
         this.tmpColorA.setHex(BAR_REST_COLORS[bar.material]);
         this.tmpColorB.setHex(BAR_LIT_COLORS[bar.material]);
-        bodyMat.color.copy(this.tmpColorA).lerp(this.tmpColorB, bulbEase * 0.92);
+        bodyMat.color.copy(this.tmpColorA).lerp(this.tmpColorB, bulbEase * 0.94);
 
         bodyMat.emissive.setHex(BAR_EMISSIVE_COLORS[bar.material]);
         bodyMat.emissiveIntensity = isSel
-          ? Math.max(0.55, 0.08 + bulbEase * 2.15)
-          : 0.06 + bulbEase * 2.15;
+          ? Math.max(0.55, 0.08 + bulbEase * 2.25)
+          : 0.06 + bulbEase * 2.25;
       } else {
         bodyMat.emissive.setHex(0x38bdf8);
         bodyMat.emissiveIntensity = isSel ? 0.35 : 0.02;
@@ -686,8 +1088,27 @@ export class OrbitalRenderer3D {
       const coreMat = entry.core.material as THREE.MeshBasicMaterial;
       coreMat.opacity = bar.silent ? 0 : 0.16 + bulbEase * 0.84;
 
-      const washMat = entry.lampWash.material as THREE.SpriteMaterial;
-      washMat.opacity = bar.silent ? 0 : bulbEase * 0.42;
+      // Cast wide, soft lightbulb glow directly onto the observatory backwall behind this bar
+      const washMat = entry.wallWash.material as THREE.MeshBasicMaterial;
+      if (!bar.silent && bulbEase > 0.02) {
+        entry.wallWash.visible = true;
+        entry.wallWash.position.set(midX, -midY, BACKWALL_Z + 0.9);
+        entry.wallWash.rotation.z = -angle;
+        const wx = Math.max(195, len * 3.35) * (0.85 + bulbEase * 0.28);
+        const wy = Math.max(165, len * 2.55) * (0.85 + bulbEase * 0.28);
+        entry.wallWash.scale.set(wx, wy, 1);
+        washMat.opacity = bulbEase * 0.54;
+
+        this.activeLampCandidates.push({
+          x: midX,
+          y: -midY,
+          color: BAR_WALL_LIGHT_COLORS[bar.material],
+          power: bulbEase * 7.2,
+          radius: 340,
+        });
+      } else {
+        entry.wallWash.visible = false;
+      }
 
       const bob = Math.sin(this.clock * 1.3 + entry.phase) * 0.9;
       entry.group.position.set(midX, -midY - flex * 0.55, (isSel ? 5 : 0) + bob);
@@ -698,9 +1119,10 @@ export class OrbitalRenderer3D {
     for (const [id, entry] of this.barMeshes.entries()) {
       if (!alive.has(id)) {
         this.scene.remove(entry.group);
+        this.scene.remove(entry.wallWash);
         (entry.body.material as THREE.Material).dispose();
         (entry.core.material as THREE.Material).dispose();
-        (entry.lampWash.material as THREE.Material).dispose();
+        (entry.wallWash.material as THREE.Material).dispose();
         this.barMeshes.delete(id);
       }
     }
@@ -750,22 +1172,12 @@ export class OrbitalRenderer3D {
         );
         ringTube.position.z = 6.2;
 
-        const lampWash = new THREE.Sprite(
-          new THREE.SpriteMaterial({
-            map: this.softDot,
-            color: 0xff6b35,
-            transparent: true,
-            opacity: 0,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false,
-          })
-        );
-        lampWash.scale.set(bmp.radius * 3.6, bmp.radius * 3.6, 1);
-        lampWash.position.z = -5;
+        const wallWash = this.makeWallWashMesh(0xff7638);
+        this.scene.add(wallWash);
 
-        group.add(lampWash, collar, dome, ringTube);
+        group.add(collar, dome, ringTube);
         this.scene.add(group);
-        entry = { group, collar, dome, ringTube, lampWash };
+        entry = { group, collar, dome, ringTube, wallWash };
         this.bumperMeshes.set(bmp.id, entry);
       }
 
@@ -777,24 +1189,43 @@ export class OrbitalRenderer3D {
 
       const domeMat = entry.dome.material as THREE.MeshPhysicalMaterial;
       this.tmpColorA.setHex(0x7c3626);
-      this.tmpColorB.setHex(0xffa970);
+      this.tmpColorB.setHex(0xffb278);
       domeMat.color.copy(this.tmpColorA).lerp(this.tmpColorB, bulb);
-      domeMat.emissiveIntensity = 0.08 + bulb * 2.25;
+      domeMat.emissiveIntensity = 0.08 + bulb * 2.3;
 
       (entry.ringTube.material as THREE.MeshBasicMaterial).opacity = 0.24 + bulb * 0.76;
-      (entry.lampWash.material as THREE.SpriteMaterial).opacity = bulb * 0.44;
+
+      const washMat = entry.wallWash.material as THREE.MeshBasicMaterial;
+      if (bulb > 0.02) {
+        entry.wallWash.visible = true;
+        entry.wallWash.position.set(bmp.x, -bmp.y, BACKWALL_Z + 0.9);
+        const ws = bmp.radius * 14.5 * (0.82 + bulb * 0.3);
+        entry.wallWash.scale.set(ws, ws, 1);
+        washMat.opacity = bulb * 0.5;
+
+        this.activeLampCandidates.push({
+          x: bmp.x,
+          y: -bmp.y,
+          color: 0xff783c,
+          power: bulb * 6.2,
+          radius: 300,
+        });
+      } else {
+        entry.wallWash.visible = false;
+      }
     }
 
     for (const [id, entry] of this.bumperMeshes.entries()) {
       if (!alive.has(id)) {
         this.scene.remove(entry.group);
+        this.scene.remove(entry.wallWash);
         entry.collar.geometry.dispose();
         (entry.collar.material as THREE.Material).dispose();
         entry.dome.geometry.dispose();
         (entry.dome.material as THREE.Material).dispose();
         entry.ringTube.geometry.dispose();
         (entry.ringTube.material as THREE.Material).dispose();
-        (entry.lampWash.material as THREE.Material).dispose();
+        (entry.wallWash.material as THREE.Material).dispose();
         this.bumperMeshes.delete(id);
       }
     }
@@ -826,22 +1257,12 @@ export class OrbitalRenderer3D {
         );
         crystal.castShadow = true;
 
-        const lampWash = new THREE.Sprite(
-          new THREE.SpriteMaterial({
-            map: this.softDot,
-            color: 0x52e5ff,
-            transparent: true,
-            opacity: 0,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false,
-          })
-        );
-        lampWash.scale.set(spl.radius * 3.8, spl.radius * 2.8, 1);
-        lampWash.position.z = -5;
+        const wallWash = this.makeWallWashMesh(0x58e8ff);
+        this.scene.add(wallWash);
 
-        group.add(lampWash, crystal);
+        group.add(crystal);
         this.scene.add(group);
-        entry = { group, crystal, lampWash };
+        entry = { group, crystal, wallWash };
         this.splitterMeshes.set(spl.id, entry);
       }
       const pulse = spl.pulse ?? 0;
@@ -855,16 +1276,35 @@ export class OrbitalRenderer3D {
       this.tmpColorA.setHex(0x5c7ea8);
       this.tmpColorB.setHex(0xc4f8ff);
       cMat.color.copy(this.tmpColorA).lerp(this.tmpColorB, bulb);
-      cMat.emissiveIntensity = 0.1 + bulb * 2.2;
-      (entry.lampWash.material as THREE.SpriteMaterial).opacity = bulb * 0.42;
+      cMat.emissiveIntensity = 0.1 + bulb * 2.25;
+
+      const washMat = entry.wallWash.material as THREE.MeshBasicMaterial;
+      if (bulb > 0.02) {
+        entry.wallWash.visible = true;
+        entry.wallWash.position.set(spl.x, -spl.y, BACKWALL_Z + 0.9);
+        const ws = spl.radius * 14 * (0.85 + bulb * 0.28);
+        entry.wallWash.scale.set(ws, ws * 0.85, 1);
+        washMat.opacity = bulb * 0.48;
+
+        this.activeLampCandidates.push({
+          x: spl.x,
+          y: -spl.y,
+          color: 0x58e8ff,
+          power: bulb * 6.0,
+          radius: 300,
+        });
+      } else {
+        entry.wallWash.visible = false;
+      }
     }
 
     for (const [id, entry] of this.splitterMeshes.entries()) {
       if (!alive.has(id)) {
         this.scene.remove(entry.group);
+        this.scene.remove(entry.wallWash);
         entry.crystal.geometry.dispose();
         (entry.crystal.material as THREE.Material).dispose();
-        (entry.lampWash.material as THREE.Material).dispose();
+        (entry.wallWash.material as THREE.Material).dispose();
         this.splitterMeshes.delete(id);
       }
     }
@@ -958,9 +1398,11 @@ export class OrbitalRenderer3D {
             depthWrite: false,
           })
         );
+        const wallWash = this.makeWallWashMesh(0x38f2c8);
+        this.scene.add(wallWash);
         group.add(torus, core);
         this.scene.add(group);
-        entry = { group, torus, core };
+        entry = { group, torus, core, wallWash };
         this.ringMeshes.set(r.id, entry);
       }
       entry.group.position.set(r.x, -r.y, 0);
@@ -971,15 +1413,35 @@ export class OrbitalRenderer3D {
       tMat.color.copy(this.tmpColorA).lerp(this.tmpColorB, charge);
       tMat.emissiveIntensity = 0.05 + charge * 1.85;
       (entry.core.material as THREE.MeshBasicMaterial).opacity = 0.06 + charge * 0.36;
+
+      if (charge > 0.04) {
+        entry.wallWash.visible = true;
+        entry.wallWash.position.set(r.x, -r.y, BACKWALL_Z + 0.9);
+        const ws = r.radius * 8.8;
+        entry.wallWash.scale.set(ws, ws, 1);
+        (entry.wallWash.material as THREE.MeshBasicMaterial).opacity = charge * 0.46;
+
+        this.activeLampCandidates.push({
+          x: r.x,
+          y: -r.y,
+          color: 0x38f2c8,
+          power: charge * 5.8,
+          radius: 300,
+        });
+      } else {
+        entry.wallWash.visible = false;
+      }
     }
 
     for (const [id, entry] of this.ringMeshes.entries()) {
       if (!alive.has(id)) {
         this.scene.remove(entry.group);
+        this.scene.remove(entry.wallWash);
         entry.torus.geometry.dispose();
         (entry.torus.material as THREE.Material).dispose();
         entry.core.geometry.dispose();
         (entry.core.material as THREE.Material).dispose();
+        (entry.wallWash.material as THREE.Material).dispose();
         this.ringMeshes.delete(id);
       }
     }
@@ -1022,6 +1484,24 @@ export class OrbitalRenderer3D {
     }
   }
 
+  private syncLampLights(): void {
+    if (this.activeLampCandidates.length > this.LAMP_LIGHT_COUNT) {
+      this.activeLampCandidates.sort((a, b) => b.power - a.power);
+    }
+    for (let i = 0; i < this.LAMP_LIGHT_COUNT; i++) {
+      const pl = this.lampLights[i];
+      const cand = this.activeLampCandidates[i];
+      if (cand && cand.power > 0.03) {
+        pl.color.setHex(cand.color);
+        pl.intensity = cand.power;
+        pl.distance = cand.radius;
+        pl.position.set(cand.x, cand.y, 18);
+      } else {
+        pl.intensity = 0;
+      }
+    }
+  }
+
   private updateAtmosphere(dt: number): void {
     for (let i = 0; i < this.DUST_COUNT; i++) {
       const ix = i * 3;
@@ -1052,6 +1532,7 @@ export class OrbitalRenderer3D {
       if (!entry || entry.sig !== sig) {
         if (entry) {
           this.scene.remove(entry.group);
+          this.scene.remove(entry.wallWash);
           entry.frontMesh.geometry.dispose();
           entry.backMesh.geometry.dispose();
           entry.frontStrip.geometry.dispose();
@@ -1061,6 +1542,7 @@ export class OrbitalRenderer3D {
           (entry.backStrip.material as THREE.Material).dispose();
           (entry.frontContactSprite.material as THREE.Material).dispose();
           (entry.backContactSprite.material as THREE.Material).dispose();
+          (entry.wallWash.material as THREE.Material).dispose();
         }
 
         const localRail: TransferRailPiece = {
@@ -1179,6 +1661,9 @@ export class OrbitalRenderer3D {
         const frontContactSprite = makeContactSprite();
         const backContactSprite = makeContactSprite();
 
+        const wallWash = this.makeWallWashMesh(0x2ee4ff);
+        this.scene.add(wallWash);
+
         group.add(
           backMesh,
           frontMesh,
@@ -1200,6 +1685,7 @@ export class OrbitalRenderer3D {
           backStrip,
           frontContactSprite,
           backContactSprite,
+          wallWash,
           sig,
           geom: worldGeom,
         };
@@ -1210,21 +1696,21 @@ export class OrbitalRenderer3D {
       entry.group.position.set(rail.x, -rail.y, RAIL_CENTER_Z);
       entry.group.rotation.z = -rail.rotation;
 
-      // Rail tubes themselves light up like twin cyan filament lamps when a marble rolls across
       const glow = rail.activeGlow ?? 0;
       const bulb = glow > 0 ? Math.pow(glow, 0.7) : 0;
       const isSel = selectedId === rail.id;
       const wallMat = entry.frontMesh.material as THREE.MeshPhysicalMaterial;
       this.tmpColorA.setHex(0x1b2432);
-      this.tmpColorB.setHex(0x2d5878);
-      wallMat.color.copy(this.tmpColorA).lerp(this.tmpColorB, bulb * 0.85);
-      wallMat.emissive.setHex(isSel ? 0x1e88b8 : 0x1698cc);
-      wallMat.emissiveIntensity = isSel ? Math.max(0.55, bulb * 1.45) : 0.04 + bulb * 1.45;
+      this.tmpColorB.setHex(0x326288);
+      wallMat.color.copy(this.tmpColorA).lerp(this.tmpColorB, bulb * 0.88);
+      wallMat.emissive.setHex(isSel ? 0x1e88b8 : 0x18a0d8);
+      wallMat.emissiveIntensity = isSel ? Math.max(0.55, bulb * 1.55) : 0.04 + bulb * 1.55;
 
       const stripOp = 0.28 + bulb * 0.72;
       (entry.frontStrip.material as THREE.MeshBasicMaterial).opacity = stripOp;
       (entry.backStrip.material as THREE.MeshBasicMaterial).opacity = stripOp;
 
+      const washMat = entry.wallWash.material as THREE.MeshBasicMaterial;
       if (bulb > 0.04) {
         const localGeom = buildRailGeometry({ ...rail, x: 0, y: 0, rotation: 0 });
         const pose = sampleRailPose(localGeom, rail.pulseT ?? 0.5);
@@ -1237,15 +1723,34 @@ export class OrbitalRenderer3D {
         entry.backContactSprite.visible = true;
         entry.backContactSprite.position.set(cx, cy, -zOff);
         (entry.backContactSprite.material as THREE.SpriteMaterial).opacity = bulb * 0.72;
+
+        // Backwall cyan neon tube wash behind the Dual-Support Rail
+        const wPose = sampleRailPose(entry.geom, 0.5);
+        entry.wallWash.visible = true;
+        entry.wallWash.position.set(wPose.point.x, -wPose.point.y, BACKWALL_Z + 0.9);
+        entry.wallWash.rotation.z = -rail.rotation;
+        const span = Math.max(185, entry.geom.totalLength * 2.25);
+        entry.wallWash.scale.set(span, Math.max(145, span * 0.65), 1);
+        washMat.opacity = bulb * 0.44;
+
+        this.activeLampCandidates.push({
+          x: wPose.point.x,
+          y: -wPose.point.y,
+          color: 0x38e2ff,
+          power: bulb * 5.6,
+          radius: 320,
+        });
       } else {
         entry.frontContactSprite.visible = false;
         entry.backContactSprite.visible = false;
+        entry.wallWash.visible = false;
       }
     }
 
     for (const [id, entry] of this.railMeshes.entries()) {
       if (!alive.has(id)) {
         this.scene.remove(entry.group);
+        this.scene.remove(entry.wallWash);
         entry.frontMesh.geometry.dispose();
         entry.backMesh.geometry.dispose();
         entry.frontStrip.geometry.dispose();
@@ -1255,6 +1760,7 @@ export class OrbitalRenderer3D {
         (entry.backStrip.material as THREE.Material).dispose();
         (entry.frontContactSprite.material as THREE.Material).dispose();
         (entry.backContactSprite.material as THREE.Material).dispose();
+        (entry.wallWash.material as THREE.Material).dispose();
         this.railMeshes.delete(id);
       }
     }
@@ -1270,6 +1776,7 @@ export class OrbitalRenderer3D {
     const dt = Math.min(0.05, Math.max(0, (now - this.lastTime) / 1000));
     this.lastTime = now;
     this.clock += dt;
+    this.activeLampCandidates.length = 0;
 
     this.updateCamera(cameraState);
     this.syncRails(world.rails ?? [], selectedId);
@@ -1279,6 +1786,7 @@ export class OrbitalRenderer3D {
     this.syncEmitters(world.emitters, dt);
     this.syncRings(world.rings);
     this.syncMarbles(world.marbles, alpha, dt);
+    this.syncLampLights();
     this.updateAtmosphere(dt);
     this.renderer.render(this.scene, this.camera);
   }
@@ -1361,7 +1869,7 @@ export class OrbitalRenderer3D {
         ctx.fillStyle =
           bulb > 0.06
             ? LABEL_LIT_CSS[bar.material]
-            : "rgba(164, 182, 204, 0.48)";
+            : "rgba(164, 182, 204, 0.52)";
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
         ctx.fillText(bar.noteLabel, labelPos.x, labelPos.y - bulb * 3);
@@ -1420,7 +1928,7 @@ export class OrbitalRenderer3D {
       ctx.restore();
     }
 
-    // 4. Note popups (crisp luminous note glyph rising from the lit bar)
+    // 4. Note popups
     for (const pop of world.popups) {
       const p = this.projectToScreen(pop.x, pop.y, 14, viewW, viewH);
       if (!p.visible) continue;
@@ -1436,17 +1944,17 @@ export class OrbitalRenderer3D {
       ctx.restore();
     }
 
-    // 5. Subtle nocturnal cinema vignette
+    // 5. Subtle nocturnal cinema vignette + corner framing ticks
     const vg = ctx.createRadialGradient(
       viewW * 0.5,
       viewH * 0.48,
-      Math.min(viewW, viewH) * 0.4,
+      Math.min(viewW, viewH) * 0.42,
       viewW * 0.5,
       viewH * 0.5,
       Math.max(viewW, viewH) * 0.78
     );
     vg.addColorStop(0, "rgba(4, 7, 12, 0)");
-    vg.addColorStop(1, "rgba(4, 7, 12, 0.38)");
+    vg.addColorStop(1, "rgba(4, 7, 12, 0.34)");
     ctx.fillStyle = vg;
     ctx.fillRect(0, 0, viewW, viewH);
   }
@@ -1460,13 +1968,22 @@ export class OrbitalRenderer3D {
     this.sharedPinGeo.dispose();
     this.sharedRailCapGeo.dispose();
     this.sharedBridgeGeo.dispose();
+    this.sharedWashPlaneGeo.dispose();
     this.marbleMat.dispose();
     this.brassMat.dispose();
     this.silentMaterial.dispose();
     this.pinMaterial.dispose();
     this.railGraphiteMat.dispose();
     this.railChromeMat.dispose();
+    this.inlayGoldMat.dispose();
+    this.inlayCyanMat.dispose();
+    this.constellationLineMat.dispose();
     Object.values(this.barMaterials).forEach((m) => m.dispose());
+    for (const entry of this.barMeshes.values()) {
+      (entry.body.material as THREE.Material).dispose();
+      (entry.core.material as THREE.Material).dispose();
+      (entry.wallWash.material as THREE.Material).dispose();
+    }
     for (const entry of this.railMeshes.values()) {
       entry.frontMesh.geometry.dispose();
       entry.backMesh.geometry.dispose();
@@ -1477,13 +1994,22 @@ export class OrbitalRenderer3D {
       (entry.backStrip.material as THREE.Material).dispose();
       (entry.frontContactSprite.material as THREE.Material).dispose();
       (entry.backContactSprite.material as THREE.Material).dispose();
+      (entry.wallWash.material as THREE.Material).dispose();
     }
+    this.ornamentGroup.traverse((obj) => {
+      if (obj instanceof THREE.Mesh || obj instanceof THREE.LineSegments) {
+        obj.geometry.dispose();
+      }
+    });
+    this.starPoints.geometry.dispose();
+    (this.starPoints.material as THREE.Material).dispose();
     this.dustPoints.geometry.dispose();
     (this.dustPoints.material as THREE.Material).dispose();
-    this.gridPoints.geometry.dispose();
-    (this.gridPoints.material as THREE.Material).dispose();
-    this.shadowPlane.geometry.dispose();
-    (this.shadowPlane.material as THREE.Material).dispose();
+    this.backwallMesh.geometry.dispose();
+    (this.backwallMesh.material as THREE.Material).dispose();
+    this.wallMap.dispose();
+    this.wallBumpMap.dispose();
+    this.wallWashTex.dispose();
     this.envTexture.dispose();
     this.backdrop.dispose();
     this.softDot.dispose();
